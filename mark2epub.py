@@ -10,6 +10,7 @@ from re import sub
 from uuid import uuid4
 from datetime import datetime
 
+
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
         return "image/gif"
@@ -25,7 +26,7 @@ def escape_xml(text: str) -> str:
     return Document().createTextNode(text).toxml()
 
 
-def create(doc: Document, tag: str, attributes: dict, content) -> Document:
+def create(doc: Document, tag: str, attributes: dict, content=None) -> Document:
     element = doc.createElement(tag)
     for key, value in attributes.items():
         element.setAttribute(key, value)
@@ -79,17 +80,16 @@ class EPubGenerator:
         return images
 
     def _create_package(self, doc: Document) -> Document:
-        package = doc.createElement('package')
-        package.setAttribute('xmlns', "http://www.idpf.org/2007/opf")
-        package.setAttribute('version', "3.0")
-        package.setAttribute('xml:lang', "en")
-        package.setAttribute("unique-identifier", self.uuid)
-
-        return package
+        return create(doc, "package", {
+            "xmlns": "http://www.idpf.org/2007/opf",
+            "version": "3.0",
+            "xml:lang": "en",
+            "unique-identifier": self.uuid
+        })
 
     def _create_metadata(self, doc: Document) -> Document:
-        metadata = doc.createElement('metadata')
-        metadata.setAttribute('xmlns:dc', 'http://purl.org/dc/elements/1.1/')
+        metadata = create(doc, 'metadata',
+                          {'xmlns:dc': 'http://purl.org/dc/elements/1.1/'})
 
         metadata_settings = self.settings_data["metadata"]
 
@@ -111,10 +111,10 @@ class EPubGenerator:
         # Ensure compatibility by providing a cover meta tag in the metadata
         for index, image_name in enumerate(self.images):
             if image_name == self.settings_data["cover_image"]:
-                cover = doc.createElement('meta')
-                cover.setAttribute('name', "cover")
-                cover.setAttribute('content', "image-{:05d}".format(index))
-                metadata.appendChild(cover)
+                metadata.appendChild(create(doc, 'meta', {
+                    'name': "cover",
+                    'content': "image-{:05d}".format(index)
+                }))
 
         return metadata
 
@@ -122,40 +122,40 @@ class EPubGenerator:
         manifest = doc.createElement('manifest')
 
         # TOC.xhtml file for EPUB 3
-        toc_xhtml = doc.createElement('item')
-        toc_xhtml.setAttribute('id', "toc")
-        toc_xhtml.setAttribute('properties', "nav")
-        toc_xhtml.setAttribute('href', "TOC.xhtml")
-        toc_xhtml.setAttribute('media-type', "application/xhtml+xml")
-        manifest.appendChild(toc_xhtml)
+        manifest.appendChild(create(doc, 'item', {
+            'id': "toc",
+            'properties': "nav",
+            'href': "TOC.xhtml",
+            'media-type': "application/xhtml+xml"
+        }))
 
         # Ensure retrocompatibility by also providing a TOC.ncx file
-        toc_ncx = doc.createElement('item')
-        toc_ncx.setAttribute('id', "ncx")
-        toc_ncx.setAttribute('href', "toc.ncx")
-        toc_ncx.setAttribute('media-type', "application/x-dtbncx+xml")
-        manifest.appendChild(toc_ncx)
+        manifest.appendChild(create(doc, 'item', {
+            'id': "ncx",
+            'href': "toc.ncx",
+            'media-type': "application/x-dtbncx+xml"
+        }))
 
-        title_page = doc.createElement('item')
-        title_page.setAttribute('id', "titlepage")
-        title_page.setAttribute('href', "titlepage.xhtml")
-        title_page.setAttribute('media-type', "application/xhtml+xml")
-        manifest.appendChild(title_page)
+        manifest.appendChild(create(doc, 'item', {
+            'id': "titlepage",
+            'href': "titlepage.xhtml",
+            'media-type': "application/xhtml+xml"
+        }))
 
         for index, markdown in enumerate(self.markdowns):
             base = splitext(basename(markdown['markdown']))[0]
-            chapter = doc.createElement('item')
-            chapter.setAttribute('id', "s{:05d}".format(index))
-            chapter.setAttribute(
-                'href', "s{:05d}-{}.xhtml".format(index, base))
-            chapter.setAttribute('media-type', "application/xhtml+xml")
-            manifest.appendChild(chapter)
+            manifest.appendChild(create(doc, 'item', {
+                'id': "s{:05d}".format(index),
+                'href': "s{:05d}-{}.xhtml".format(index, base),
+                'media-type': "application/xhtml+xml"
+            }))
 
         for index, image_name in enumerate(self.images):
-            image = doc.createElement('item')
-            image.setAttribute('id', "image-{:05d}".format(index))
-            image.setAttribute('href', image_name)
-            image.setAttribute('media-type', get_image_mimetype(image_name))
+            image = create(doc, 'item', {
+                'id': "image-{:05d}".format(index),
+                'href': image_name,
+                'media-type': get_image_mimetype(image_name)
+            })
 
             if image_name == self.settings_data["cover_image"]:
                 image.setAttribute('properties', "cover-image")
@@ -163,38 +163,37 @@ class EPubGenerator:
             manifest.appendChild(image)
 
         for index, style_name in enumerate(self.styles):
-            style = doc.createElement('item')
-            style.setAttribute('id', "css-{:05d}".format(index))
-            style.setAttribute('href', style_name)
-            style.setAttribute('media-type', "text/css")
-            manifest.appendChild(style)
+            manifest.appendChild(create(doc, 'item', {
+                'id': "css-{:05d}".format(index),
+                'href': style_name,
+                'media-type': "text/css"
+            }))
 
         return manifest
 
     def _create_spine(self, doc: Document) -> Document:
-        spine = doc.createElement('spine')
-        spine.setAttribute('toc', "ncx")
+        spine = create(doc, 'spine', {'toc': 'ncx'})
 
-        title_page = doc.createElement('itemref')
-        title_page.setAttribute('idref', "titlepage")
-        title_page.setAttribute('linear', "yes")
-        spine.appendChild(title_page)
+        spine.appendChild(create(doc, 'itemref', {
+            'idref': "titlepage",
+            'linear': "yes"
+        }))
 
         for index, _ in enumerate(self.markdowns):
-            chapter = doc.createElement('itemref')
-            chapter.setAttribute('idref', "s{:05d}".format(index))
-            chapter.setAttribute('linear', "yes")
-            spine.appendChild(chapter)
+            spine.appendChild(create(doc, 'itemref', {
+                'idref': "s{:05d}".format(index),
+                'linear': "yes"
+            }))
 
         return spine
 
     def _create_guide(self, doc: Document) -> Document:
         guide = doc.createElement('guide')
-        reference = doc.createElement('reference')
-        reference.setAttribute('type', "cover")
-        reference.setAttribute('title', "Cover image")
-        reference.setAttribute('href', "titlepage.xhtml")
-        guide.appendChild(reference)
+        guide.appendChild(create(doc, 'reference', {
+            'type': 'cover',
+            'title': 'Cover image',
+            'href': 'titlepage.xhtml'
+        }))
 
         return guide
 
