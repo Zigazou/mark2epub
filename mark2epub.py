@@ -280,7 +280,7 @@ class EPubGenerator:
             '<text>{}</text>\n'.format(escape_xml(self.settings_data["metadata"]["dc:title"])) +
             '</docTitle>\n' +
             '<docAuthor>' +
-            '<text>{}</text>'.format(escape_xml(self.settings_data["metadata"]["dc:contributor"])) +
+            '<text>{}</text>'.format(escape_xml(self.settings_data["metadata"]["dc:creator"])) +
             '</docAuthor>' +
             '<navMap>\n'
         )
