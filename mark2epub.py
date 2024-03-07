@@ -3,11 +3,12 @@ from os import listdir
 from os.path import basename, splitext, abspath, join
 from sys import argv
 from markdown import markdown
-from xml.dom.minidom import Document
-from zipfile import ZipFile, ZIP_DEFLATED
+from xml.dom.minidom import Document, DocumentFragment
+from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 from json import load
 from re import sub
-
+from uuid import uuid4
+from datetime import datetime
 
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
@@ -24,10 +25,16 @@ def escape_xml(text: str) -> str:
     return Document().createTextNode(text).toxml()
 
 
-def create(doc: Document, tag: str, attributes: dict) -> Document:
+def create(doc: Document, tag: str, attributes: dict, content) -> Document:
     element = doc.createElement(tag)
     for key, value in attributes.items():
         element.setAttribute(key, value)
+
+    if content:
+        if isinstance(content, DocumentFragment):
+            element.appendChild(content)
+        else:
+            element.appendChild(doc.createTextNode(content))
 
     return element
 
@@ -39,6 +46,8 @@ class EPubGenerator:
 
         self.images_directory = self.get_path('images')
         self.styles_directory = self.get_path('css')
+
+        self.uuid = 'm2e-' + str(uuid4())
 
         with open(settings_path, "r") as f:
             self.settings_data = load(f)
@@ -74,7 +83,7 @@ class EPubGenerator:
         package.setAttribute('xmlns', "http://www.idpf.org/2007/opf")
         package.setAttribute('version', "3.0")
         package.setAttribute('xml:lang', "en")
-        package.setAttribute("unique-identifier", "pub-id")
+        package.setAttribute("unique-identifier", self.uuid)
 
         return package
 
@@ -87,11 +96,17 @@ class EPubGenerator:
         for key, value in metadata_settings.items():
             if len(value):
                 entry = doc.createElement(key)
-                for metadata_type, id_label in [("dc:title", "title"), ("dc:creator", "creator"), ("dc:identifier", "book-id")]:
+                for metadata_type, id_label in [("dc:title", "title"), ("dc:creator", "creator"), ("dc:identifier", self.uuid)]:
                     if key == metadata_type:
                         entry.setAttribute('id', id_label)
                 entry.appendChild(doc.createTextNode(value))
                 metadata.appendChild(entry)
+
+        # Ensure compatibility by providing a modified meta tag in the metadata
+        metadata.appendChild(create(doc, "meta", {
+            "property": "dcterms:modified",
+        }, datetime.now().strftime(r"%Y-%m-%dT%H:%M:%SZ")
+        ))
 
         # Ensure compatibility by providing a cover meta tag in the metadata
         for index, image_name in enumerate(self.images):
@@ -212,7 +227,10 @@ class EPubGenerator:
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n' +
             '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr">\n' +
-            '<head>\n</head>\n<body>\n' +
+            '<head>\n' +
+            '<title>{}</title>\n'.format(escape_xml(self.settings_data["metadata"]["dc:title"])) +
+            '</head>\n' +
+            '<body>\n' +
             '<img src="{}" style="height:100%;max-width:100%;"/>\n'.format(cover_image_path) +
             '</body>\n</html>'
         ).encode('utf-8')
@@ -222,7 +240,8 @@ class EPubGenerator:
         toc_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n'
-            '<head>\n<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
+            '<head>\n'
+            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
             '<title>Contents</title>\n'
         )
 
@@ -231,7 +250,8 @@ class EPubGenerator:
                 style_name)
 
         toc_xhtml += (
-            '</head>\n<body>\n'
+            '</head>\n'
+            '<body>\n'
             '<nav epub:type="toc" role="doc-toc" id="toc">\n<h2>Contents</h2>\n<ol epub:type="list">'
         )
 
@@ -249,9 +269,20 @@ class EPubGenerator:
         # Returns the XML data for the TOC.ncx file
 
         toc_ncx = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xml:lang="fr" version="2005-1">\n'
-            '<head>\n</head>\n'
+            '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xml:lang="fr" version="2005-1">\n' +
+            '<head>\n' +
+            '<meta name="dtb:uid" content="{}"/>\n'.format(escape_xml(self.settings_data["metadata"]["dc:identifier"])) +
+            '<meta name="dtb:depth" content="1"/>\n' +
+            '<meta name="dtb:totalPageCount" content="0"/>\n' +
+            '<meta name="dtb:maxPageNumber" content="0"/>\n' +
+            '</head>\n' +
+            '<docTitle>\n' +
+            '<text>{}</text>\n'.format(escape_xml(self.settings_data["metadata"]["dc:title"])) +
+            '</docTitle>\n' +
+            '<docAuthor>' +
+            '<text>{}</text>'.format(escape_xml(self.settings_data["metadata"]["dc:contributor"])) +
+            '</docAuthor>' +
             '<navMap>\n'
         )
 
@@ -278,6 +309,8 @@ class EPubGenerator:
     def chapter_XML(self, markdown_name: str, styles: list[str]) -> bytes:
         # Returns the XML data for a given markdown chapter file, with the
         # corresponding css chapter files
+        title = self.chapter_title(markdown_name)
+
         with open(self.get_path(markdown_name), "r", encoding="utf-8") as f:
             markdown_data = f.read()
 
@@ -289,9 +322,11 @@ class EPubGenerator:
                              )
 
         all_xhtml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n'
-            '<head>\n<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
+            '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n' +
+            '<head>\n' +
+            '<title>{}</title>\n'.format(title) +
+            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
         )
 
         for style in styles:
@@ -303,7 +338,10 @@ class EPubGenerator:
         return all_xhtml.encode('utf-8')
 
     def epub_put(self, epub: ZipFile, filename: str, data: str) -> None:
-        epub.writestr(filename, data, ZIP_DEFLATED, 9)
+        if filename == "mimetype":
+            epub.writestr(filename, data, ZIP_STORED)
+        else:
+            epub.writestr(filename, data, ZIP_DEFLATED, 9)
 
     def create_epub(self, epub_path: str):
         with ZipFile(epub_path, "w") as epub:
