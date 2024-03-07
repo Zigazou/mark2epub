@@ -16,7 +16,7 @@ mark2epub requires:
 
 The syntax for mark2epub is the following:
 
-    $ python md2epub.py <markdown_directory> <output_file.epub>
+    $ python mark2epub.py <markdown_directory> <output_file.epub>
 
 The directory `epub_md` is a sample markdown directory for mark2epub.
 
