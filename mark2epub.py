@@ -19,6 +19,7 @@ def get_image_mimetype(image_name: str) -> str:
     elif "png" in image_name:
         return "image/png"
 
+
 def escape_xml(text: str) -> str:
     return Document().createTextNode(text).toxml()
 
@@ -294,7 +295,7 @@ class EPubGenerator:
         )
 
         for style in styles:
-            all_xhtml += '<link rel="stylesheet" href="css/{}" type="text/css"/>\n'.format(
+            all_xhtml += '<link rel="stylesheet" href="{}" type="text/css"/>\n'.format(
                 style)
 
         all_xhtml += '</head>\n<body>\n' + html_text + '\n</body>\n</html>'
@@ -338,8 +339,7 @@ class EPubGenerator:
             # Copy image files
             for _, image_name in enumerate(self.images):
                 with open(self.get_path(image_name), "rb") as f:
-                    self.epub_put(
-                        epub, "OPS/images/{}".format(basename(image_name)), f.read())
+                    self.epub_put(epub, "OPS/{}".format(image_name), f.read())
 
             # Copy CSS files
             for _, style_name in enumerate(self.styles):
