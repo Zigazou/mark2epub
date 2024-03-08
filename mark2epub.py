@@ -58,6 +58,24 @@ img {
     height: auto;      
 }
 
+img.cover {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    width: auto;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+body.cover, html.cover {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
 table {
     border-collapse: collapse;
     width: 100%;
@@ -302,18 +320,25 @@ class EPubGenerator:
     def coverpage_XML(self) -> bytes:
         # Returns the XML data for the coverpage.xhtml file
         cover_image_path = self.settings_data["cover_image"]
+
+        styles = ""
+        for style_name in self.default_styles:
+            styles += (
+                f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
+            )
+
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml"'
-            f' xml:lang="{self.language}">'
+            f' xml:lang="{self.language}" class="cover">'
             '<head>'
             '<title>'
             f'{escape_xml(self.settings_data["metadata"]["dc:title"])}'
             '</title>'
+            f'{styles}'
             '</head>'
-            '<body>'
-            '<img'
-            f' src="{cover_image_path}" style="height:100%;max-width:100%;"/>'
+            '<body class="cover">'
+            f'<img src="{cover_image_path}" class="cover" />'
             '</body></html>'
         ).encode('utf-8')
 
