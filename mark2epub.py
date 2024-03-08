@@ -12,6 +12,9 @@ from datetime import datetime
 from PIL import Image
 from io import BytesIO
 
+def fatal_error(message: str, exit_code: int) -> None:
+    print(f"ERROR: {message}", file=stderr)
+    exit(exit_code)
 
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
@@ -519,42 +522,35 @@ def parse_command_line(arguments: list[str]) -> dict:
 def check_command_line(command_line: dict) -> None:
     if command_line['command'] is None:
         print_usage()
-        print("ERROR: No command provided", file=stderr)
-        exit(1)
+        fatal_error("No command provided", 1)
 
     command = command_line['command']
     if command not in OPTIONS:
-        print(f"ERROR: Unknown command '{command}'", file=stderr)
-        exit(2)
+        fatal_error(f"Unknown command '{command}'", 2)
 
     options = command_line['options']
     for option in options:
         if option not in OPTIONS[command]['settings']:
-            print(
-                f"ERROR: Unknown option {option} for command {command}",
-                file=stderr
-            )
-            exit(3)
+            fatal_error(f"Unknown option {option} for command {command}", 3)
 
     min_args = OPTIONS[command]['min_args']
     max_args = OPTIONS[command]['max_args']
     arg_count = len(command_line['arguments'])
     if not (min_args <= arg_count <= max_args):
         if min_args == max_args:
-            print(
-                f"ERROR: Invalid arguments count, got {arg_count}"
+            fatal_error(
+                f"Invalid arguments count, got {arg_count}"
                 f" but expected {min_args}"
                 f" for command {command}",
-                file=stderr
+                4
             )
         else:
-            print(
-                f"ERROR: Invalid arguments count, got {arg_count}"
+            fatal_error(
+                f"Invalid arguments count, got {arg_count}"
                 f" but expected between {min_args} and {max_args})"
                 f" for command {command}",
-                file=stderr
+                4
             )
-        exit(4)
 
 
 def main(arguments: list[str]):
