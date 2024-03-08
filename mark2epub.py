@@ -9,7 +9,8 @@ from json import load
 from re import sub
 from uuid import uuid4
 from datetime import datetime
-
+from PIL import Image
+from io import BytesIO
 
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
@@ -336,13 +337,34 @@ class EPubGenerator:
 
         return all_xhtml.encode('utf-8')
 
+    def process_image(self, image_name: str, options: dict) -> bytes:
+        image = Image.open(self.get_path(image_name))
+        format = image.format
+
+        # Remove EXIF data
+        data = list(image.getdata())
+        image = Image.new(image.mode, image.size)
+        image.putdata(data)
+
+        if options["gray-images"]:
+            image = image.convert("L")
+
+        output = BytesIO()
+        if format == "JPEG":
+            quality = int(options["jpeg-quality"])
+            image.save(output, format, quality=quality)
+        else:
+            image.save(output, format)
+
+        return output.getvalue()
+
     def epub_put(self, epub: ZipFile, filename: str, data: str) -> None:
         if filename == "mimetype":
             epub.writestr(filename, data, ZIP_STORED)
         else:
             epub.writestr(filename, data, ZIP_DEFLATED, 9)
 
-    def create_epub(self, epub_path: str):
+    def create_epub(self, epub_path: str, options: dict):
         with ZipFile(epub_path, "w") as epub:
             # First, write the mimetype
             self.epub_put(epub, "mimetype", "application/epub+zip")
@@ -375,8 +397,8 @@ class EPubGenerator:
 
             # Copy image files
             for _, image_name in enumerate(self.images):
-                with open(self.get_path(image_name), "rb") as f:
-                    self.epub_put(epub, "OPS/{}".format(image_name), f.read())
+                processed = self.process_image(image_name, options)
+                self.epub_put(epub, "OPS/{}".format(image_name), processed)
 
             # Copy CSS files
             for _, style_name in enumerate(self.styles):
@@ -394,6 +416,10 @@ OPTIONS = {
                 "default": False,
                 "description": "Convert all images to grayscale"
             },
+            "jpeg-quality": {
+                "default": "95",
+                "description": "Quality for JPEG images"
+            }
         },
         "min_args": 2,
         "max_args": 2
@@ -453,6 +479,12 @@ def parse_command_line(arguments: list[str]) -> dict:
 
         if command_line['command'] is None:
             command_line['command'] = argument
+
+            if argument in OPTIONS:
+                for option in OPTIONS[argument]['settings']:
+                    default = OPTIONS[argument]['settings'][option]['default']
+                    command_line['options'][option] = default
+
             continue
 
         command_line['arguments'].append(argument)
@@ -498,7 +530,7 @@ def main(arguments: list[str]):
 
     if command['command'] == "convert":
         epub_generator = EPubGenerator(command['arguments'][0])
-        epub_generator.create_epub(command['arguments'][1])
+        epub_generator.create_epub(command['arguments'][1], command['options'])
 
         print("SUCCESS: eBook creation complete")
 
