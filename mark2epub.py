@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from os import listdir
-from os.path import basename, splitext, abspath, join, isdir
+from os.path import basename, splitext, abspath, join
 from sys import argv
 from markdown import markdown
 from xml.dom.minidom import Document, DocumentFragment
@@ -385,12 +385,6 @@ class EPubGenerator:
                         epub, "OPS/{}".format(style_name), f.read())
 
 
-HELP = """
-Usage:
-    mark2epub.py convert <markdown_directory> <output.epub>
-    mark2epub.py help
-"""
-
 OPTIONS = {
     "convert": {
         "usage": "convert <markdown_directory> <output.epub>",
@@ -462,8 +456,9 @@ def parse_command_line(arguments: list[str]) -> dict:
             continue
 
         command_line['arguments'].append(argument)
-    
+
     return command_line
+
 
 def check_command_line(command_line: dict) -> None:
     if command_line['command'] is None:
