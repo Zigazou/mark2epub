@@ -12,6 +12,7 @@ from datetime import datetime
 from PIL import Image
 from io import BytesIO
 
+
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
         return "image/gif"
@@ -114,7 +115,7 @@ class EPubGenerator:
             if image_name == self.settings_data["cover_image"]:
                 metadata.appendChild(create(doc, 'meta', {
                     'name': "cover",
-                    'content': "image-{:05d}".format(index)
+                    'content': f"image-{index:05d}"
                 }))
 
         return metadata
@@ -146,14 +147,14 @@ class EPubGenerator:
         for index, markdown in enumerate(self.markdowns):
             base = splitext(basename(markdown['markdown']))[0]
             manifest.appendChild(create(doc, 'item', {
-                'id': "s{:05d}".format(index),
-                'href': "s{:05d}-{}.xhtml".format(index, base),
+                'id': f"s{index:05d}",
+                'href': f"s{index:05d}-{base}.xhtml",
                 'media-type': "application/xhtml+xml"
             }))
 
         for index, image_name in enumerate(self.images):
             image = create(doc, 'item', {
-                'id': "image-{:05d}".format(index),
+                'id': f"image-{index:05d}",
                 'href': image_name,
                 'media-type': get_image_mimetype(image_name)
             })
@@ -165,7 +166,7 @@ class EPubGenerator:
 
         for index, style_name in enumerate(self.styles):
             manifest.appendChild(create(doc, 'item', {
-                'id': "css-{:05d}".format(index),
+                'id': f"css-{index:05d}",
                 'href': style_name,
                 'media-type': "text/css"
             }))
@@ -182,7 +183,7 @@ class EPubGenerator:
 
         for index, _ in enumerate(self.markdowns):
             spine.appendChild(create(doc, 'itemref', {
-                'idref': "s{:05d}".format(index),
+                'idref': f"s{index:05d}",
                 'linear': "yes"
             }))
 
@@ -225,13 +226,13 @@ class EPubGenerator:
         # Returns the XML data for the coverpage.xhtml file
         cover_image_path = self.settings_data["cover_image"]
         return (
-            '<?xml version="1.0" encoding="utf-8"?>\n' +
-            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr">\n' +
-            '<head>\n' +
-            '<title>{}</title>\n'.format(escape_xml(self.settings_data["metadata"]["dc:title"])) +
-            '</head>\n' +
-            '<body>\n' +
-            '<img src="{}" style="height:100%;max-width:100%;"/>\n'.format(cover_image_path) +
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr">'
+            '<head>'
+            f'<title>{escape_xml(self.settings_data["metadata"]["dc:title"])}</title>'
+            '</head>'
+            '<body>'
+            f'<img src="{cover_image_path}" style="height:100%;max-width:100%;"/>'
             '</body>\n</html>'
         ).encode('utf-8')
 
@@ -239,27 +240,33 @@ class EPubGenerator:
         # Returns the XML data for the TOC.xhtml file
         toc_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n'
-            '<head>\n'
-            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
-            '<title>Contents</title>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
+            '<head>'
+            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>'
+            '<title>Contents</title>'
         )
 
         for style_name in self.default_styles:
-            toc_xhtml += '<link rel="stylesheet" href="{}" type="text/css"/>\n'.format(
-                style_name)
+            toc_xhtml += (
+                f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
+            )
 
         toc_xhtml += (
-            '</head>\n'
-            '<body>\n'
-            '<nav epub:type="toc" role="doc-toc" id="toc">\n<h2>Contents</h2>\n<ol epub:type="list">'
+            '</head>'
+            '<body>'
+            '<nav epub:type="toc" role="doc-toc" id="toc">'
+            '<h2>Contents</h2>'
+            '<ol epub:type="list">'
         )
 
         for index, markdown in enumerate(self.markdowns):
             base = splitext(basename(markdown["markdown"]))[0]
             title = escape_xml(self.chapter_title(markdown["markdown"]))
-            toc_xhtml += '<li><a href="s{:05d}-{}.xhtml">{}</a></li>'.format(
-                index, base, title)
+            toc_xhtml += (
+                '<li>'
+                f'<a href="s{index:05d}-{base}.xhtml">{title}</a>'
+                '</li>'
+            )
 
         toc_xhtml += '</ol>\n</nav>\n</body>\n</html>'
 
@@ -267,32 +274,36 @@ class EPubGenerator:
 
     def tocncx_XML(self) -> bytes:
         # Returns the XML data for the TOC.ncx file
-
+        identifier = escape_xml(
+            self.settings_data["metadata"]["dc:identifier"])
+        title = escape_xml(self.settings_data["metadata"]["dc:title"])
+        creator = escape_xml(self.settings_data["metadata"]["dc:creator"])
         toc_ncx = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n' +
-            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xml:lang="fr" version="2005-1">\n' +
-            '<head>\n' +
-            '<meta name="dtb:uid" content="{}"/>\n'.format(escape_xml(self.settings_data["metadata"]["dc:identifier"])) +
-            '<meta name="dtb:depth" content="1"/>\n' +
-            '<meta name="dtb:totalPageCount" content="0"/>\n' +
-            '<meta name="dtb:maxPageNumber" content="0"/>\n' +
-            '</head>\n' +
-            '<docTitle>\n' +
-            '<text>{}</text>\n'.format(escape_xml(self.settings_data["metadata"]["dc:title"])) +
-            '</docTitle>\n' +
-            '<docAuthor>' +
-            '<text>{}</text>'.format(escape_xml(self.settings_data["metadata"]["dc:creator"])) +
-            '</docAuthor>' +
-            '<navMap>\n'
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"'
+            ' xml:lang="fr" version="2005-1">'
+            '<head>'
+            f'<meta name="dtb:uid" content="{identifier}"/>'
+            '<meta name="dtb:depth" content="1"/>'
+            '<meta name="dtb:totalPageCount" content="0"/>'
+            '<meta name="dtb:maxPageNumber" content="0"/>'
+            '</head>'
+            '<docTitle>'
+            f'<text>{title}</text>'
+            '</docTitle>'
+            '<docAuthor>'
+            f'<text>{creator}</text>'
+            '</docAuthor>'
+            '<navMap>'
         )
 
         for index, markdown in enumerate(self.markdowns):
             base = splitext(basename(markdown["markdown"]))[0]
             title = escape_xml(self.chapter_title(markdown["markdown"]))
             toc_ncx += (
-                '<navPoint id="navpoint-{}">\n'.format(index) +
-                '<navLabel>\n<text>{}</text>\n</navLabel>'.format(title) +
-                '<content src="s{:05d}-{}.xhtml"/>'.format(index, base) +
+                f'<navPoint id="navpoint-{index}">'
+                f'<navLabel><text>{title}</text></navLabel>'
+                f'<content src="s{index:05d}-{base}.xhtml"/>'
                 ' </navPoint>'
             )
 
@@ -322,18 +333,21 @@ class EPubGenerator:
                              )
 
         all_xhtml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n' +
-            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n' +
-            '<head>\n' +
-            '<title>{}</title>\n'.format(title) +
-            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>\n'
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml"'
+            ' xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
+            '<head>'
+            f'<title>{title}</title>'
+            '<meta http-equiv="default-style"'
+            ' content="text/html; charset=utf-8"/>'
         )
 
         for style in styles:
-            all_xhtml += '<link rel="stylesheet" href="{}" type="text/css"/>\n'.format(
-                style)
+            all_xhtml += (
+                f'<link rel="stylesheet" href="{style}" type="text/css"/>'
+            )
 
-        all_xhtml += '</head>\n<body>\n' + html_text + '\n</body>\n</html>'
+        all_xhtml += f'</head><body>{html_text}</body></html>'
 
         return all_xhtml.encode('utf-8')
 
@@ -386,8 +400,12 @@ class EPubGenerator:
                     chapter_styles.append(chapter["css"])
 
                 chapter_data = self.chapter_XML(chapter_name, chapter_styles)
-                self.epub_put(epub, "OPS/s{:05d}-{}.xhtml".format(index, splitext(basename(chapter_name))[0]),
-                              chapter_data)
+                base = splitext(basename(chapter_name))[0]
+                self.epub_put(
+                    epub,
+                    f"OPS/s{index:05d}-{base}.xhtml",
+                    chapter_data
+                )
 
             # Writing the TOC.xhtml file
             self.epub_put(epub, "OPS/TOC.xhtml", self.toc_XML())
@@ -398,13 +416,13 @@ class EPubGenerator:
             # Copy image files
             for _, image_name in enumerate(self.images):
                 processed = self.process_image(image_name, options)
-                self.epub_put(epub, "OPS/{}".format(image_name), processed)
+                self.epub_put(epub, f"OPS/{image_name}", processed)
 
             # Copy CSS files
             for _, style_name in enumerate(self.styles):
                 with open(self.get_path(style_name), "rb") as f:
                     self.epub_put(
-                        epub, "OPS/{}".format(style_name), f.read())
+                        epub, f"OPS/{style_name}", f.read())
 
 
 OPTIONS = {
