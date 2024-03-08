@@ -95,14 +95,22 @@ class EPubGenerator:
 
         metadata_settings = self.settings_data["metadata"]
 
+        ids = {
+            "dc:title": "title",
+            "dc:creator": "creator",
+            "dc:identifier": self.uuid
+        }
+
         for key, value in metadata_settings.items():
-            if len(value):
-                entry = doc.createElement(key)
-                for metadata_type, id_label in [("dc:title", "title"), ("dc:creator", "creator"), ("dc:identifier", self.uuid)]:
-                    if key == metadata_type:
-                        entry.setAttribute('id', id_label)
-                entry.appendChild(doc.createTextNode(value))
-                metadata.appendChild(entry)
+            if len(value) == 0:
+                continue
+
+            if key in ids:
+                entry = create(doc, key, {'id': ids[key]}, value)
+            else:
+                entry = create(doc, key, {}, value)
+
+            metadata.appendChild(entry)
 
         # Ensure compatibility by providing a modified meta tag in the metadata
         metadata.appendChild(create(doc, "meta", {
@@ -216,10 +224,12 @@ class EPubGenerator:
     def container_XML(self) -> bytes:
         return (
             '<?xml version="1.0" encoding="UTF-8" ?>\n'
-            '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n'
-            '<rootfiles>\n'
-            '<rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>\n'
-            '</rootfiles>\n</container>'
+            '<container version="1.0"'
+            ' xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles>'
+            '<rootfile full-path="OPS/package.opf"'
+            ' media-type="application/oebps-package+xml"/>'
+            '</rootfiles></container>'
         ).encode('utf-8')
 
     def coverpage_XML(self) -> bytes:
@@ -229,20 +239,25 @@ class EPubGenerator:
             '<?xml version="1.0" encoding="utf-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr">'
             '<head>'
-            f'<title>{escape_xml(self.settings_data["metadata"]["dc:title"])}</title>'
+            '<title>'
+            f'{escape_xml(self.settings_data["metadata"]["dc:title"])}'
+            '</title>'
             '</head>'
             '<body>'
-            f'<img src="{cover_image_path}" style="height:100%;max-width:100%;"/>'
-            '</body>\n</html>'
+            '<img'
+            f' src="{cover_image_path}" style="height:100%;max-width:100%;"/>'
+            '</body></html>'
         ).encode('utf-8')
 
     def toc_XML(self) -> bytes:
         # Returns the XML data for the TOC.xhtml file
         toc_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
+            '<html xmlns="http://www.w3.org/1999/xhtml"'
+            ' xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
             '<head>'
-            '<meta http-equiv="default-style" content="text/html; charset=utf-8"/>'
+            '<meta http-equiv="default-style"'
+            ' content="text/html; charset=utf-8"/>'
             '<title>Contents</title>'
         )
 
