@@ -47,9 +47,6 @@ class EPubGenerator:
         self.source_directory = abspath(source_directory)
         settings_path = self.get_path("description.json")
 
-        self.images_directory = self.get_path('images')
-        self.styles_directory = self.get_path('css')
-
         self.uuid = 'm2e-' + str(uuid4())
 
         with open(settings_path, "r") as f:
@@ -68,16 +65,10 @@ class EPubGenerator:
     def get_path(self, relative_path: str) -> str:
         return join(self.source_directory, relative_path)
 
-    def image_path(self, image_name: str) -> str:
-        return join(self.images_directory, image_name)
-
-    def style_path(self, style_name: str) -> str:
-        return join(self.styles_directory, style_name)
-
     def find_images(self):
         extensions = [".gif", ".jpg", ".jpeg", ".png"]
         images = [join('images', basename(image)) for image in listdir(
-            self.images_directory) if splitext(image)[1] in extensions]
+            self.get_path('images')) if splitext(image)[1] in extensions]
 
         return images
 
