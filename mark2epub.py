@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from os import listdir
-from os.path import basename, splitext, abspath, join
+from os.path import basename, splitext, abspath, join, isdir
 from sys import argv
 from markdown import markdown
 from xml.dom.minidom import Document, DocumentFragment
@@ -385,16 +385,130 @@ class EPubGenerator:
                         epub, "OPS/{}".format(style_name), f.read())
 
 
-def main(arguments: list[str]):
-    if len(arguments) < 2:
-        print("\nUsage:")
-        print("    python3 mark2epub.py <markdown_directory> <output.epub>")
+HELP = """
+Usage:
+    mark2epub.py convert <markdown_directory> <output.epub>
+    mark2epub.py help
+"""
+
+OPTIONS = {
+    "convert": {
+        "usage": "convert <markdown_directory> <output.epub>",
+        "description": "Convert a directory of markdown files into an EPUB",
+        "settings": {
+            "gray-images": {
+                "default": False,
+                "description": "Convert all images to grayscale"
+            },
+        },
+        "min_args": 2,
+        "max_args": 2
+    },
+    "help": {
+        "usage": "help",
+        "description": "Display this help message",
+        "settings": {},
+        "min_args": 0,
+        "max_args": 0
+    },
+}
+
+
+def print_usage():
+    print("\nUsage: mark2epub.py <command> [options] [arguments]")
+
+    print("\nCommands:")
+    for command, infos in OPTIONS.items():
+        print(f"    {command}:")
+        print(f"        usage: {infos['usage']}")
+        print(f"        description: {infos['description']}")
+
+        if len(infos['settings']) > 0:
+            print("        settings:")
+            for setting, settings in infos['settings'].items():
+                print(f"            --{setting} - {settings['description']}"
+                      f" (default: {settings['default']})")
+
+        print()
+
+
+def parse_command_line(arguments: list[str]) -> dict:
+    command_line = {
+        'command': None,
+        'options': {},
+        'arguments': []
+    }
+
+    end_of_options = False
+    for argument in arguments:
+        if not end_of_options:
+            if argument == '--':
+                end_of_options = True
+                continue
+
+            if argument.startswith("--"):
+                parts = argument[2:].split("=", 1)
+                key = parts[0]
+                if len(parts) == 1:
+                    value = True
+                else:
+                    value = parts[1]
+
+                command_line['options'][key] = value
+                continue
+
+        if command_line['command'] is None:
+            command_line['command'] = argument
+            continue
+
+        command_line['arguments'].append(argument)
+    
+    return command_line
+
+def check_command_line(command_line: dict) -> None:
+    if command_line['command'] is None:
+        print_usage()
+        print("ERROR: No command provided")
         exit(1)
 
-    epub_generator = EPubGenerator(arguments[0])
-    epub_generator.create_epub(arguments[1])
+    command = command_line['command']
+    if command not in OPTIONS:
+        print(f"ERROR: Unknown command '{command}'")
+        exit(2)
 
-    print("eBook creation complete")
+    options = command_line['options']
+    for option in options:
+        if option not in OPTIONS[command]['settings']:
+            print(f"ERROR: Unknown option {option} for command {command}")
+            exit(3)
+
+    min_args = OPTIONS[command]['min_args']
+    max_args = OPTIONS[command]['max_args']
+    arg_count = len(command_line['arguments'])
+    if not (min_args <= arg_count <= max_args):
+        if min_args == max_args:
+            print(f"ERROR: Invalid arguments count, got {arg_count}"
+                  f" but expected {min_args}"
+                  f" for command {command}")
+        else:
+            print(f"ERROR: Invalid arguments count, got {arg_count}"
+                  f" but expected between {min_args} and {max_args})"
+                  f" for command {command}")
+        exit(4)
+
+
+def main(arguments: list[str]):
+    command = parse_command_line(arguments)
+    check_command_line(command)
+
+    if command['command'] == "convert":
+        epub_generator = EPubGenerator(command['arguments'][0])
+        epub_generator.create_epub(command['arguments'][1])
+
+        print("SUCCESS: eBook creation complete")
+
+    if command['command'] == "help":
+        print_usage()
 
 
 if __name__ == "__main__":
