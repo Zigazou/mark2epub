@@ -58,6 +58,8 @@ class EPubGenerator:
         self.markdowns = [chapter.copy()
                           for chapter in self.settings_data["chapters"]]
 
+        self.language = self.settings_data["metadata"]["dc:language"]
+
         self.default_styles = self.settings_data["default_css"]
         self.styles = set(self.default_styles)
         self.styles.update([chapter["css"]
@@ -79,7 +81,7 @@ class EPubGenerator:
         return create(doc, "package", {
             "xmlns": "http://www.idpf.org/2007/opf",
             "version": "3.0",
-            "xml:lang": "en",
+            "xml:lang": self.language,
             "unique-identifier": self.uuid
         })
 
@@ -231,7 +233,8 @@ class EPubGenerator:
         cover_image_path = self.settings_data["cover_image"]
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="fr">'
+            '<html xmlns="http://www.w3.org/1999/xhtml"'
+            f' xml:lang="{self.language}">'
             '<head>'
             '<title>'
             f'{escape_xml(self.settings_data["metadata"]["dc:title"])}'
@@ -248,7 +251,8 @@ class EPubGenerator:
         toc_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml"'
-            ' xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
+            ' xmlns:epub="http://www.idpf.org/2007/ops"'
+            f' lang="{self.language}">'
             '<head>'
             '<meta http-equiv="default-style"'
             ' content="text/html; charset=utf-8"/>'
@@ -290,7 +294,7 @@ class EPubGenerator:
         toc_ncx = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"'
-            ' xml:lang="fr" version="2005-1">'
+            f' xml:lang="{self.language}" version="2005-1">'
             '<head>'
             f'<meta name="dtb:uid" content="{identifier}"/>'
             '<meta name="dtb:depth" content="1"/>'
@@ -344,7 +348,8 @@ class EPubGenerator:
         all_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml"'
-            ' xmlns:epub="http://www.idpf.org/2007/ops" lang="en">'
+            ' xmlns:epub="http://www.idpf.org/2007/ops"'
+            f' lang="{self.language}">'
             '<head>'
             f'<title>{title}</title>'
             '<meta http-equiv="default-style"'

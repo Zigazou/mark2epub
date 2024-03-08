@@ -1,24 +1,36 @@
 {
-"metadata":{
-    "dc:title":"Mark2Epub Sample",
-    "dc:creator":"Mark2Epub",
-    "dc:language":"en-US",
-    "dc:identifier":"mark2epub-sample",
-    "dc:source":"",
-    "meta":"",
-    "dc:date":"2023-01-01",
-    "dc:publisher":"",
-    "dc:contributor":"",
-    "dc:rights":"",
-    "dc:description":"",
-    "dc:subject":""
+    "metadata": {
+        "dc:title": "Mark2Epub Sample",
+        "dc:creator": "Mark2Epub",
+        "dc:language": "en-US",
+        "dc:identifier": "mark2epub-sample",
+        "dc:source": "",
+        "meta": "",
+        "dc:date": "2023-01-01",
+        "dc:publisher": "",
+        "dc:contributor": "",
+        "dc:rights": "",
+        "dc:description": "",
+        "dc:subject": ""
     },
-"cover_image":"images/cover.jpg",
-"default_css":["css/code_styles.css","css/general.css"],
-"chapters":[
-            {"markdown":"chapter1.md"},
-            {"markdown":"chapter2.md"},
-            {"markdown":"chapter3.md"},
-            {"markdown":"chapter4.md","css":"css/specific.css"}
-        ]
+    "cover_image": "images/cover.jpg",
+    "default_css": [
+        "css/code_styles.css",
+        "css/general.css"
+    ],
+    "chapters": [
+        {
+            "markdown": "chapter1.md"
+        },
+        {
+            "markdown": "chapter2.md"
+        },
+        {
+            "markdown": "chapter3.md"
+        },
+        {
+            "markdown": "chapter4.md",
+            "css": "css/specific.css"
+        }
+    ]
 }
