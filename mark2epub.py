@@ -421,28 +421,31 @@ class EPubGenerator:
         if format == "PNG" and options["zopfli"]:
             image.save(output, format, optimize=True)
 
-            with NamedTemporaryFile(delete=False) as png_temp:
+            with NamedTemporaryFile() as png_temp:
                 png_temp.write(output.getvalue())
-                png_temp.close()
-
-                result = run([
-                        'advpng',
-                        '--recompress',
-                        '--shrink-insane',
-                        '--iter=127',
-                        '--quiet',
-                        '--',
-                        png_temp.name
-                ])
+                result = run(
+                    [
+                        'zopflipng',
+                        '-y',
+                        '--iterations=63',
+                        '--lossy_transparent',
+                        '--lossy_8bit',
+                        '--filters=e',
+                        png_temp.name,
+                        png_temp.name + ".zopfli"
+                    ],
+                    stdout=PIPE,
+                    stderr=PIPE
+                )
 
                 if result.returncode != 0:
-                    fatal_error(f"Could not use advpng on {image_name}", 6)
+                    fatal_error(f"Could not use zopflipng on {image_name}", 6)
 
-                with open(png_temp.name, "rb") as output_file:
-                    output = output_file.read()
+            with open(png_temp.name + ".zopfli", "rb") as output_file:
+                output = output_file.read()
 
-                unlink(png_temp.name)
-                return output
+            unlink(png_temp.name + ".zopfli")
+            return output
 
         image.save(output, format, optimize=True)
         return output.getvalue()
@@ -607,6 +610,9 @@ def main(arguments: list[str]):
         use_zopfli = options['zopfli']
         if use_zopfli and find_executable("advzip") is None:
             fatal_error("advzip is required for Zopfli compression", 5)
+
+        if use_zopfli and find_executable("zopflipng") is None:
+            fatal_error("zopflipng is required for Zopfli compression", 5)
             
         epub_generator = EPubGenerator(source_directory)
         epub_generator.create_epub(output_epub, options)
