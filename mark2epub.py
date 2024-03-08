@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from os import listdir
+from os import listdir, unlink
 from os.path import basename, splitext, abspath, join
 from sys import argv, stderr
 from markdown import markdown
@@ -11,10 +11,45 @@ from uuid import uuid4
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
+from distutils.spawn import find_executable
+from subprocess import run, PIPE
+from tempfile import NamedTemporaryFile
+
+OPTIONS = {
+    "convert": {
+        "usage": "convert <markdown_directory> <output.epub>",
+        "description": "Convert a directory of markdown files into an EPUB",
+        "settings": {
+            "gray-images": {
+                "default": False,
+                "description": "Convert all images to grayscale"
+            },
+            "jpeg-quality": {
+                "default": "95",
+                "description": "Quality for JPEG images"
+            },
+            "zopfli": {
+                "default": False,
+                "description": "Use Zopfli (advzip required) for compression"
+            }
+        },
+        "min_args": 2,
+        "max_args": 2
+    },
+    "help": {
+        "usage": "help",
+        "description": "Display this help message",
+        "settings": {},
+        "min_args": 0,
+        "max_args": 0
+    },
+}
+
 
 def fatal_error(message: str, exit_code: int) -> None:
     print(f"ERROR: {message}", file=stderr)
     exit(exit_code)
+
 
 def get_image_mimetype(image_name: str) -> str:
     if "gif" in image_name:
@@ -380,11 +415,38 @@ class EPubGenerator:
         output = BytesIO()
         if format == "JPEG":
             quality = int(options["jpeg-quality"])
-            image.save(output, format, quality=quality)
-        else:
-            image.save(output, format)
+            image.save(output, format, quality=quality, optimize=True)
+            return output.getvalue()
 
+        if format == "PNG" and options["zopfli"]:
+            image.save(output, format, optimize=True)
+
+            with NamedTemporaryFile(delete=False) as png_temp:
+                png_temp.write(output.getvalue())
+                png_temp.close()
+
+                result = run([
+                        'advpng',
+                        '--recompress',
+                        '--shrink-insane',
+                        '--iter=127',
+                        '--quiet',
+                        '--',
+                        png_temp.name
+                ])
+
+                if result.returncode != 0:
+                    fatal_error(f"Could not use advpng on {image_name}", 6)
+
+                with open(png_temp.name, "rb") as output_file:
+                    output = output_file.read()
+
+                unlink(png_temp.name)
+                return output
+
+        image.save(output, format, optimize=True)
         return output.getvalue()
+
 
     def epub_put(self, epub: ZipFile, filename: str, data: str) -> None:
         if filename == "mimetype":
@@ -437,33 +499,6 @@ class EPubGenerator:
                 with open(self.get_path(style_name), "rb") as f:
                     self.epub_put(
                         epub, f"OPS/{style_name}", f.read())
-
-
-OPTIONS = {
-    "convert": {
-        "usage": "convert <markdown_directory> <output.epub>",
-        "description": "Convert a directory of markdown files into an EPUB",
-        "settings": {
-            "gray-images": {
-                "default": False,
-                "description": "Convert all images to grayscale"
-            },
-            "jpeg-quality": {
-                "default": "95",
-                "description": "Quality for JPEG images"
-            }
-        },
-        "min_args": 2,
-        "max_args": 2
-    },
-    "help": {
-        "usage": "help",
-        "description": "Display this help message",
-        "settings": {},
-        "min_args": 0,
-        "max_args": 0
-    },
-}
 
 
 def print_usage():
@@ -563,8 +598,30 @@ def main(arguments: list[str]):
     check_command_line(command)
 
     if command['command'] == "convert":
-        epub_generator = EPubGenerator(command['arguments'][0])
-        epub_generator.create_epub(command['arguments'][1], command['options'])
+        source_directory = command['arguments'][0]
+        output_epub = command['arguments'][1]
+        options = command['options']
+
+        # Check if advzip is available if Zopfli is requested before doing
+        # anything
+        use_zopfli = options['zopfli']
+        if use_zopfli and find_executable("advzip") is None:
+            fatal_error("advzip is required for Zopfli compression", 5)
+            
+        epub_generator = EPubGenerator(source_directory)
+        epub_generator.create_epub(output_epub, options)
+
+        if use_zopfli:
+            run([
+                "advzip",
+                "--recompress",
+                "--shrink-insane",
+                "--iter=127",
+                "--pedantic",
+                "--quiet",
+                "--",
+                output_epub,
+            ])             
 
         print("SUCCESS: eBook creation complete")
 
