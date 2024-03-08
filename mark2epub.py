@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from os import listdir
 from os.path import basename, splitext, abspath, join
-from sys import argv
+from sys import argv, stderr
 from markdown import markdown
 from xml.dom.minidom import Document, DocumentFragment
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
@@ -519,18 +519,21 @@ def parse_command_line(arguments: list[str]) -> dict:
 def check_command_line(command_line: dict) -> None:
     if command_line['command'] is None:
         print_usage()
-        print("ERROR: No command provided")
+        print("ERROR: No command provided", file=stderr)
         exit(1)
 
     command = command_line['command']
     if command not in OPTIONS:
-        print(f"ERROR: Unknown command '{command}'")
+        print(f"ERROR: Unknown command '{command}'", file=stderr)
         exit(2)
 
     options = command_line['options']
     for option in options:
         if option not in OPTIONS[command]['settings']:
-            print(f"ERROR: Unknown option {option} for command {command}")
+            print(
+                f"ERROR: Unknown option {option} for command {command}",
+                file=stderr
+            )
             exit(3)
 
     min_args = OPTIONS[command]['min_args']
@@ -538,13 +541,19 @@ def check_command_line(command_line: dict) -> None:
     arg_count = len(command_line['arguments'])
     if not (min_args <= arg_count <= max_args):
         if min_args == max_args:
-            print(f"ERROR: Invalid arguments count, got {arg_count}"
-                  f" but expected {min_args}"
-                  f" for command {command}")
+            print(
+                f"ERROR: Invalid arguments count, got {arg_count}"
+                f" but expected {min_args}"
+                f" for command {command}",
+                file=stderr
+            )
         else:
-            print(f"ERROR: Invalid arguments count, got {arg_count}"
-                  f" but expected between {min_args} and {max_args})"
-                  f" for command {command}")
+            print(
+                f"ERROR: Invalid arguments count, got {arg_count}"
+                f" but expected between {min_args} and {max_args})"
+                f" for command {command}",
+                file=stderr
+            )
         exit(4)
 
 
