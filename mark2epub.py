@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-from os import listdir, unlink
+from os import listdir, unlink, mkdir
 from os.path import basename, splitext, abspath, join
 from sys import argv, stderr
 from markdown import markdown
 from xml.dom.minidom import Document, DocumentFragment
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
-from json import load
+from json import load, dumps
 from re import sub
 from uuid import uuid4
-from datetime import datetime
-from PIL import Image
+from datetime import datetime, date
+from PIL import Image, ImageDraw
 from io import BytesIO
 from distutils.spawn import find_executable
 from subprocess import run, PIPE
@@ -36,6 +36,13 @@ OPTIONS = {
         "min_args": 2,
         "max_args": 2
     },
+    "init": {
+        "usage": "init <new_directory>",
+        "description": "Create and fill a directory",
+        "settings": {},
+        "min_args": 1,
+        "max_args": 1
+    },
     "help": {
         "usage": "help",
         "description": "Display this help message",
@@ -44,6 +51,35 @@ OPTIONS = {
         "max_args": 0
     },
 }
+
+DEFAULT_STYLES = r"""
+img {
+    max-width: 100%;
+    height: auto;      
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 80%;
+}
+
+td, th {
+    border: 2px solid #bbb;
+    padding: 10px;
+}
+
+tr:nth-child(even) { background-color: #eee; }
+
+th {
+    padding-top: 1em;
+    padding-bottom: 1em;
+    text-align: left;
+    background-color: #444;
+    color: white;
+    font-size: 80%;
+}
+"""
 
 
 def fatal_error(message: str, exit_code: int) -> None:
@@ -504,6 +540,76 @@ class EPubGenerator:
                         epub, f"OPS/{style_name}", f.read())
 
 
+def create_template(template_directory: str) -> None:
+    # Create the template directory.
+    try:
+        mkdir(template_directory)
+    except FileExistsError:
+        fatal_error(f"{template_directory} already exists", 7)
+
+    # Fill images directory.
+    images_directory = join(template_directory, "images")
+    mkdir(images_directory)
+
+    cover = Image.new(mode="RGB", size=(800, 1000), color="blue")
+    draw = ImageDraw.Draw(cover)
+    draw.rectangle([(0, 460), (800, 540)], fill="yellow") 
+    cover.save(join(images_directory, "cover.jpg"))
+
+    # Fill css directory.
+    styles_directory = join(template_directory, "css")
+    mkdir(styles_directory)
+
+    with open(join(styles_directory, "general.css"), "w") as f:
+        f.write(DEFAULT_STYLES)
+
+    with open(join(styles_directory, "specific.css"), "w") as f:
+        f.write("/* Specific CSS for a chapter */\n\n")
+
+    # Create the description.json file.
+    description = {
+        "metadata": {
+            "dc:title": "The name of this document",
+            "dc:creator": "Who has made this document?",
+            "dc:language": "en-US",
+            "dc:identifier": "An unambiguous reference to this document",
+            "dc:source": "A work from which this document is derived",
+            "meta": "",
+            "dc:date": date.today().strftime(r"%Y-%m-%d"),
+            "dc:publisher": "Who has made this document available?",
+            "dc:contributor": "Who has made contributions to this document?",
+            "dc:rights": "Rights held in and over the resource",
+            "dc:description": "An account of this document",
+            "dc:subject": "The topic of this document"
+        },
+        "cover_image": "images/cover.jpg",
+        "default_css": [
+            "css/general.css"
+        ],
+        "chapters": [
+            {
+                "markdown": "chapter1.md"
+            },
+            {
+                "markdown": "chapter2.md",
+                "css": "css/specific.css"
+            }
+        ]
+    }
+
+    description_name = join(template_directory, "description.json")
+    with open(description_name, "w") as description_file:
+        description_file.write(dumps(description, indent=4))
+
+    # Create the chapter1.md file.
+    with open(join(template_directory, "chapter1.md"), "w") as f:
+        f.write('# Chapter 1\n\nThis is the first chapter.')
+
+    # Create the chapter2.md file.
+    with open(join(template_directory, "chapter2.md"), "w") as f:
+        f.write('# Chapter 2\n\nThis is the second chapter.')
+
+
 def print_usage():
     print("\nUsage: mark2epub.py <command> [options] [arguments]")
 
@@ -633,6 +739,11 @@ def main(arguments: list[str]):
 
     if command['command'] == "help":
         print_usage()
+
+    if command['command'] == "init":
+        template_directory = command['arguments'][0]
+        create_template(template_directory)
+        print(f"SUCCESS: {template_directory} template created")
 
 
 if __name__ == "__main__":
