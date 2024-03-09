@@ -1,0 +1,25 @@
+{
+    "metadata": {
+        "dc:title": "La Ficelle",
+        "dc:creator": "Guy de Maupassant",
+        "dc:language": "fr-FR",
+        "dc:identifier": "ficelle-gdm",
+        "dc:source": "",
+        "meta": "",
+        "dc:date": "2024-01-01",
+        "dc:publisher": "Frédéric Bisson",
+        "dc:contributor": "",
+        "dc:rights": "Public domain",
+        "dc:description": "Dans un village normand, maître Hauchecorne ramasse un bout de ficelle. Plus tard, un crieur public annonce la perte d'un portefeuille. Hauchecorne est accusé d'avoir trouvé et gardé le portefeuille. Il est convoqué chez le maire, où rien n'est retenu contre lui mais son innocence n'est pas prouvée. Les gens qu'il croise sont convaincus qu'il a conservé le portefeuille. Plus tard, le portefeuille est trouvé sur la route. Il pense être enfin libéré de tout soupçon, mais à mesure qu'il raconte son histoire, les autres pensent qu'il a fait rapporter le portefeuille. Obsédé, Hauchecorne tombe malade et décède. Jusqu’à sa mort il clamera son innocence en montrant la petite ficelle.",
+        "dc:subject": "Nouvelle publiée à l’origine dans Le Gaulois et dans le recueil Miss Harriet. Elle est dédié à Harry Alis."
+    },
+    "cover_image": "images/cover.jpg",
+    "default_css": [
+        "css/general.css"
+    ],
+    "chapters": [
+        {
+            "markdown": "chapter1.md"
+        }
+    ]
+}

@@ -97,6 +97,11 @@ th {
     color: white;
     font-size: 80%;
 }
+
+blockquote {
+    margin-left: 10%;
+    font-style: italic;
+}
 """
 
 
