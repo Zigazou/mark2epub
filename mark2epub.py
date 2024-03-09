@@ -1,19 +1,45 @@
 #!/usr/bin/env python3
+"""
+This script converts a directory of markdown files into an EPUB file.
+It provides functionality to customize the EPUB generation process by specifying
+various settings.
+
+Usage:
+    python3 mark2epub.py convert <markdown_directory> <output.epub>
+    python3 mark2epub.py init <new_directory>
+    python3 mark2epub.py help
+
+Options:
+    convert             Convert a directory of markdown files into an EPUB
+    init                Create and fill a directory
+    help                Display this help message
+
+Settings:
+    --gray-images         Convert all images to grayscale
+    --jpeg-quality        Quality for JPEG images
+    --zopfli              Use Zopfli (advzip required) for compression
+
+Examples:
+    python mark2epub.py convert my_markdowns/ my_book.epub
+    python mark2epub.py init new_book/
+    python mark2epub.py help
+"""
+
 from os import listdir, unlink, mkdir
 from os.path import basename, splitext, abspath, join
-from sys import argv, stderr
-from markdown import markdown
+from sys import argv, stderr, exit as sys_exit
 from xml.dom.minidom import Document, DocumentFragment
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 from json import load, dumps
 from re import sub
 from uuid import uuid4
 from datetime import datetime, date
-from PIL import Image, ImageDraw
 from io import BytesIO
-from distutils.spawn import find_executable
+from shutil import which
 from subprocess import run, PIPE
 from tempfile import NamedTemporaryFile
+from PIL import Image, ImageDraw
+from markdown import markdown
 
 OPTIONS = {
     "convert": {
@@ -106,26 +132,35 @@ blockquote {
 
 
 def fatal_error(message: str, exit_code: int) -> None:
+    """Print an error message on stderr and exit the program."""
     print(f"ERROR: {message}", file=stderr)
-    exit(exit_code)
+    sys_exit(exit_code)
 
 
 def get_image_mimetype(image_name: str) -> str:
+    """Return the mimetype of an image based on its name."""
     if "gif" in image_name:
         return "image/gif"
-    elif "jpg" in image_name:
+
+    if "jpg" in image_name:
         return "image/jpeg"
-    elif "jpeg" in image_name:
+
+    if "jpeg" in image_name:
         return "image/jpg"
-    elif "png" in image_name:
+
+    if "png" in image_name:
         return "image/png"
+
+    return "application/octet-stream"
 
 
 def escape_xml(text: str) -> str:
+    """Escape XML special characters in a string."""
     return Document().createTextNode(text).toxml()
 
 
 def create(doc: Document, tag: str, attributes: dict, content=None) -> Document:
+    """Create an XML element with the given tag, attributes and content."""
     element = doc.createElement(tag)
     for key, value in attributes.items():
         element.setAttribute(key, value)
@@ -140,31 +175,33 @@ def create(doc: Document, tag: str, attributes: dict, content=None) -> Document:
 
 
 class EPubGenerator:
+    """Class to generate an EPUB file from a directory of markdown files."""
     def __init__(self, source_directory: str) -> None:
         self.source_directory = abspath(source_directory)
         settings_path = self.get_path("description.json")
 
         self.uuid = 'm2e-' + str(uuid4())
 
-        with open(settings_path, "r") as f:
-            self.settings_data = load(f)
+        with open(settings_path, "rb") as json_file:
+            self.settings_data = load(json_file)
 
         self.markdowns = [chapter.copy()
                           for chapter in self.settings_data["chapters"]]
 
         self.language = self.settings_data["metadata"]["dc:language"]
 
-        self.default_styles = self.settings_data["default_css"]
-        self.styles = set(self.default_styles)
+        self.styles = set(self.settings_data["default_css"])
         self.styles.update([chapter["css"]
                            for chapter in self.markdowns if "css" in chapter])
 
         self.images = self.find_images()
 
     def get_path(self, relative_path: str) -> str:
+        """Return the absolute path of a file in the source directory."""
         return join(self.source_directory, relative_path)
 
     def find_images(self):
+        """Return a list of image files in the image directory."""
         extensions = [".gif", ".jpg", ".jpeg", ".png"]
         images = [join('images', basename(image)) for image in listdir(
             self.get_path('images')) if splitext(image)[1] in extensions]
@@ -172,6 +209,7 @@ class EPubGenerator:
         return images
 
     def _create_package(self, doc: Document) -> Document:
+        """Create the package element of the OPF file."""
         return create(doc, "package", {
             "xmlns": "http://www.idpf.org/2007/opf",
             "version": "3.0",
@@ -180,6 +218,7 @@ class EPubGenerator:
         })
 
     def _create_metadata(self, doc: Document) -> Document:
+        """Create the metadata element of the OPF file."""
         metadata = create(doc, 'metadata',
                           {'xmlns:dc': 'http://purl.org/dc/elements/1.1/'})
 
@@ -219,6 +258,7 @@ class EPubGenerator:
         return metadata
 
     def _create_manifest(self, doc: Document) -> Document:
+        """Create the manifest element of the OPF file."""
         manifest = doc.createElement('manifest')
 
         # TOC.xhtml file for EPUB 3
@@ -242,8 +282,8 @@ class EPubGenerator:
             'media-type': "application/xhtml+xml"
         }))
 
-        for index, markdown in enumerate(self.markdowns):
-            base = splitext(basename(markdown['markdown']))[0]
+        for index, entry in enumerate(self.markdowns):
+            base = splitext(basename(entry['markdown']))[0]
             manifest.appendChild(create(doc, 'item', {
                 'id': f"s{index:05d}",
                 'href': f"s{index:05d}-{base}.xhtml",
@@ -272,6 +312,7 @@ class EPubGenerator:
         return manifest
 
     def _create_spine(self, doc: Document) -> Document:
+        """Create the spine element of the OPF file."""
         spine = create(doc, 'spine', {'toc': 'ncx'})
 
         spine.appendChild(create(doc, 'itemref', {
@@ -288,6 +329,7 @@ class EPubGenerator:
         return spine
 
     def _create_guide(self, doc: Document) -> Document:
+        """Create the guide element of the OPF file."""
         guide = doc.createElement('guide')
         guide.appendChild(create(doc, 'reference', {
             'type': 'cover',
@@ -297,7 +339,8 @@ class EPubGenerator:
 
         return guide
 
-    def packageOPF_XML(self):
+    def package_opf_xml(self):
+        """Return the XML data for the package.opf file."""
         opf = Document()
 
         package = self._create_package(opf)
@@ -311,7 +354,8 @@ class EPubGenerator:
 
         return opf.toprettyxml()
 
-    def container_XML(self) -> bytes:
+    def container_xml(self) -> bytes:
+        """Return the XML data for the container.xml file."""
         return (
             '<?xml version="1.0" encoding="UTF-8" ?>\n'
             '<container version="1.0"'
@@ -322,15 +366,14 @@ class EPubGenerator:
             '</rootfiles></container>'
         ).encode('utf-8')
 
-    def coverpage_XML(self) -> bytes:
-        # Returns the XML data for the coverpage.xhtml file
+    def coverpage_xml(self) -> bytes:
+        """Return the XML data for the coverpage.xhtml file."""
         cover_image_path = self.settings_data["cover_image"]
 
-        styles = ""
-        for style_name in self.default_styles:
-            styles += (
-                f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
-            )
+        styles = "".join([
+            f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
+            for style_name in self.styles
+        ])
 
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -347,8 +390,8 @@ class EPubGenerator:
             '</body></html>'
         ).encode('utf-8')
 
-    def toc_XML(self) -> bytes:
-        # Returns the XML data for the TOC.xhtml file
+    def toc_xml(self) -> bytes:
+        """Returns the XML data for the TOC.xhtml file."""
         toc_xhtml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<html xmlns="http://www.w3.org/1999/xhtml"'
@@ -360,7 +403,7 @@ class EPubGenerator:
             '<title>Contents</title>'
         )
 
-        for style_name in self.default_styles:
+        for style_name in self.settings_data["default_css"]:
             toc_xhtml += (
                 f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
             )
@@ -373,9 +416,9 @@ class EPubGenerator:
             '<ol epub:type="list">'
         )
 
-        for index, markdown in enumerate(self.markdowns):
-            base = splitext(basename(markdown["markdown"]))[0]
-            title = escape_xml(self.chapter_title(markdown["markdown"]))
+        for index, entry in enumerate(self.markdowns):
+            base = splitext(basename(entry["markdown"]))[0]
+            title = escape_xml(self.chapter_title(entry["markdown"]))
             toc_xhtml += (
                 '<li>'
                 f'<a href="s{index:05d}-{base}.xhtml">{title}</a>'
@@ -386,8 +429,8 @@ class EPubGenerator:
 
         return toc_xhtml.encode('utf-8')
 
-    def tocncx_XML(self) -> bytes:
-        # Returns the XML data for the TOC.ncx file
+    def tocncx_xml(self) -> bytes:
+        """Returns the XML data for the TOC.ncx file."""
         identifier = escape_xml(
             self.settings_data["metadata"]["dc:identifier"])
         title = escape_xml(self.settings_data["metadata"]["dc:title"])
@@ -411,9 +454,9 @@ class EPubGenerator:
             '<navMap>'
         )
 
-        for index, markdown in enumerate(self.markdowns):
-            base = splitext(basename(markdown["markdown"]))[0]
-            title = escape_xml(self.chapter_title(markdown["markdown"]))
+        for index, entry in enumerate(self.markdowns):
+            base = splitext(basename(entry["markdown"]))[0]
+            title = escape_xml(self.chapter_title(entry["markdown"]))
             toc_ncx += (
                 f'<navPoint id="navpoint-{index}">'
                 f'<navLabel><text>{title}</text></navLabel>'
@@ -426,18 +469,21 @@ class EPubGenerator:
         return toc_ncx.encode('utf-8')
 
     def chapter_title(self, markdown_name: str) -> str:
-        with open(self.get_path(markdown_name), "r", encoding="utf-8") as f:
-            markdown_data = f.read()
+        """Returns the title of a chapter from its markdown file."""
+        with open(self.get_path(markdown_name), "r", encoding="utf-8") as chap:
+            markdown_data = chap.read()
 
         return sub(r'^#* *', '', markdown_data.split("\n")[0])
 
-    def chapter_XML(self, markdown_name: str, styles: list[str]) -> bytes:
-        # Returns the XML data for a given markdown chapter file, with the
-        # corresponding css chapter files
+    def chapter_xml(self, markdown_name: str, styles: list[str]) -> bytes:
+        """
+        Returns the XML data for a given markdown chapter file, with the
+        corresponding css chapter files
+        """
         title = self.chapter_title(markdown_name)
 
-        with open(self.get_path(markdown_name), "r", encoding="utf-8") as f:
-            markdown_data = f.read()
+        with open(self.get_path(markdown_name), "r", encoding="utf-8") as chap:
+            markdown_data = chap.read()
 
         html_text = markdown(markdown_data,
                              extensions=["codehilite",
@@ -467,8 +513,9 @@ class EPubGenerator:
         return all_xhtml.encode('utf-8')
 
     def process_image(self, image_name: str, options: dict) -> bytes:
+        """Process an image file and return its binary data."""
         image = Image.open(self.get_path(image_name))
-        format = image.format
+        img_format = image.format
 
         # Remove EXIF data
         data = list(image.getdata())
@@ -479,13 +526,13 @@ class EPubGenerator:
             image = image.convert("L")
 
         output = BytesIO()
-        if format == "JPEG":
+        if img_format == "JPEG":
             quality = int(options["jpeg-quality"])
-            image.save(output, format, quality=quality, optimize=True)
+            image.save(output, img_format, quality=quality, optimize=True)
             return output.getvalue()
 
-        if format == "PNG" and options["zopfli"]:
-            image.save(output, format, optimize=True)
+        if img_format == "PNG" and options["zopfli"]:
+            image.save(output, img_format, optimize=True)
 
             with NamedTemporaryFile() as png_temp:
                 png_temp.write(output.getvalue())
@@ -501,7 +548,8 @@ class EPubGenerator:
                         png_temp.name + ".zopfli"
                     ],
                     stdout=PIPE,
-                    stderr=PIPE
+                    stderr=PIPE,
+                    check=False
                 )
 
                 if result.returncode != 0:
@@ -513,29 +561,31 @@ class EPubGenerator:
             unlink(png_temp.name + ".zopfli")
             return output
 
-        image.save(output, format, optimize=True)
+        image.save(output, img_format, optimize=True)
         return output.getvalue()
 
 
     def epub_put(self, epub: ZipFile, filename: str, data: str) -> None:
+        """Write a file to the EPUB archive."""
         if filename == "mimetype":
             epub.writestr(filename, data, ZIP_STORED)
         else:
             epub.writestr(filename, data, ZIP_DEFLATED, 9)
 
     def create_epub(self, epub_path: str, options: dict):
+        """Create the EPUB file."""
         with ZipFile(epub_path, "w") as epub:
             # First, write the mimetype
             self.epub_put(epub, "mimetype", "application/epub+zip")
 
             # Then, the file container.xml which just points to package.opf
-            self.epub_put(epub, "META-INF/container.xml", self.container_XML())
+            self.epub_put(epub, "META-INF/container.xml", self.container_xml())
 
             # Then, the package.opf file itself
-            self.epub_put(epub, "OPS/package.opf", self.packageOPF_XML())
+            self.epub_put(epub, "OPS/package.opf", self.package_opf_xml())
 
             # First, we create the cover page
-            self.epub_put(epub, "OPS/titlepage.xhtml", self.coverpage_XML())
+            self.epub_put(epub, "OPS/titlepage.xhtml", self.coverpage_xml())
 
             # Now, we are going to convert the Markdown files to xhtml files
             for index, chapter in enumerate(self.settings_data["chapters"]):
@@ -544,7 +594,7 @@ class EPubGenerator:
                 if 'css' in chapter:
                     chapter_styles.append(chapter["css"])
 
-                chapter_data = self.chapter_XML(chapter_name, chapter_styles)
+                chapter_data = self.chapter_xml(chapter_name, chapter_styles)
                 base = splitext(basename(chapter_name))[0]
                 self.epub_put(
                     epub,
@@ -553,10 +603,10 @@ class EPubGenerator:
                 )
 
             # Writing the TOC.xhtml file
-            self.epub_put(epub, "OPS/TOC.xhtml", self.toc_XML())
+            self.epub_put(epub, "OPS/TOC.xhtml", self.toc_xml())
 
             # Writing the TOC.ncx file
-            self.epub_put(epub, "OPS/toc.ncx", self.tocncx_XML())
+            self.epub_put(epub, "OPS/toc.ncx", self.tocncx_xml())
 
             # Copy image files
             for _, image_name in enumerate(self.images):
@@ -565,12 +615,13 @@ class EPubGenerator:
 
             # Copy CSS files
             for _, style_name in enumerate(self.styles):
-                with open(self.get_path(style_name), "rb") as f:
+                with open(self.get_path(style_name), "rb") as style_file:
                     self.epub_put(
-                        epub, f"OPS/{style_name}", f.read())
+                        epub, f"OPS/{style_name}", style_file.read())
 
 
 def create_template(template_directory: str) -> None:
+    """Create a template directory with a description.json file."""
     # Create the template directory.
     try:
         mkdir(template_directory)
@@ -583,18 +634,18 @@ def create_template(template_directory: str) -> None:
 
     cover = Image.new(mode="RGB", size=(800, 1000), color="blue")
     draw = ImageDraw.Draw(cover)
-    draw.rectangle([(0, 460), (800, 540)], fill="yellow") 
+    draw.rectangle([(0, 460), (800, 540)], fill="yellow")
     cover.save(join(images_directory, "cover.jpg"))
 
     # Fill css directory.
     styles_directory = join(template_directory, "css")
     mkdir(styles_directory)
 
-    with open(join(styles_directory, "general.css"), "w") as f:
-        f.write(DEFAULT_STYLES)
+    with open(join(styles_directory, "general.css"), "wb") as general_css:
+        general_css.write(DEFAULT_STYLES)
 
-    with open(join(styles_directory, "specific.css"), "w") as f:
-        f.write("/* Specific CSS for a chapter */\n\n")
+    with open(join(styles_directory, "specific.css"), "wb") as specific_css:
+        specific_css.write("/* Specific CSS for a chapter */\n\n")
 
     # Create the description.json file.
     description = {
@@ -628,19 +679,20 @@ def create_template(template_directory: str) -> None:
     }
 
     description_name = join(template_directory, "description.json")
-    with open(description_name, "w") as description_file:
+    with open(description_name, "wb") as description_file:
         description_file.write(dumps(description, indent=4))
 
     # Create the chapter1.md file.
-    with open(join(template_directory, "chapter1.md"), "w") as f:
-        f.write('# Chapter 1\n\nThis is the first chapter.')
+    with open(join(template_directory, "chapter1.md"), "wb") as chap1:
+        chap1.write('# Chapter 1\n\nThis is the first chapter.')
 
     # Create the chapter2.md file.
-    with open(join(template_directory, "chapter2.md"), "w") as f:
-        f.write('# Chapter 2\n\nThis is the second chapter.')
+    with open(join(template_directory, "chapter2.md"), "wb") as chap2:
+        chap2.write('# Chapter 2\n\nThis is the second chapter.')
 
 
 def print_usage():
+    """Print the usage message."""
     print("\nUsage: mark2epub.py <command> [options] [arguments]")
 
     print("\nCommands:")
@@ -659,6 +711,10 @@ def print_usage():
 
 
 def parse_command_line(arguments: list[str]) -> dict:
+    """
+    Parse the command line and return a dictionary with the command and its
+    options and arguments.
+    """
     command_line = {
         'command': None,
         'options': {},
@@ -699,6 +755,7 @@ def parse_command_line(arguments: list[str]) -> dict:
 
 
 def check_command_line(command_line: dict) -> None:
+    """Check if the command line is valid."""
     if command_line['command'] is None:
         print_usage()
         fatal_error("No command provided", 1)
@@ -715,7 +772,7 @@ def check_command_line(command_line: dict) -> None:
     min_args = OPTIONS[command]['min_args']
     max_args = OPTIONS[command]['max_args']
     arg_count = len(command_line['arguments'])
-    if not (min_args <= arg_count <= max_args):
+    if not min_args <= arg_count <= max_args:
         if min_args == max_args:
             fatal_error(
                 f"Invalid arguments count, got {arg_count}"
@@ -733,6 +790,7 @@ def check_command_line(command_line: dict) -> None:
 
 
 def main(arguments: list[str]):
+    """Main function of the script."""
     command = parse_command_line(arguments)
     check_command_line(command)
 
@@ -744,26 +802,29 @@ def main(arguments: list[str]):
         # Check if advzip is available if Zopfli is requested before doing
         # anything
         use_zopfli = options['zopfli']
-        if use_zopfli and find_executable("advzip") is None:
+        if use_zopfli and which("advzip") is None:
             fatal_error("advzip is required for Zopfli compression", 5)
 
-        if use_zopfli and find_executable("zopflipng") is None:
+        if use_zopfli and which("zopflipng") is None:
             fatal_error("zopflipng is required for Zopfli compression", 5)
-            
+
         epub_generator = EPubGenerator(source_directory)
         epub_generator.create_epub(output_epub, options)
 
         if use_zopfli:
-            run([
-                "advzip",
-                "--recompress",
-                "--shrink-insane",
-                "--iter=127",
-                "--pedantic",
-                "--quiet",
-                "--",
-                output_epub,
-            ])             
+            run(
+                [
+                    "advzip",
+                    "--recompress",
+                    "--shrink-insane",
+                    "--iter=127",
+                    "--pedantic",
+                    "--quiet",
+                    "--",
+                    output_epub,
+                ],
+                check=False
+            )
 
         print("SUCCESS: eBook creation complete")
 
