@@ -28,7 +28,7 @@ Examples:
 from os import listdir, unlink, mkdir
 from os.path import basename, splitext, abspath, join
 from sys import argv, stderr, exit as sys_exit
-from xml.dom.minidom import Document, DocumentFragment
+from xml.dom.minidom import Document, DocumentFragment, parseString
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 from json import load, dumps
 from re import sub
@@ -154,16 +154,14 @@ def get_image_mimetype(image_name: str) -> str:
     return "application/octet-stream"
 
 
-def escape_xml(text: str) -> str:
-    """Escape XML special characters in a string."""
-    return Document().createTextNode(text).toxml()
-
-
-def create(doc: Document, tag: str, attributes: dict, content=None) -> Document:
+def create(tag: str, attributes: dict = None, content=None) -> Document:
     """Create an XML element with the given tag, attributes and content."""
+    doc = Document()
     element = doc.createElement(tag)
-    for key, value in attributes.items():
-        element.setAttribute(key, value)
+
+    if attributes is not None:
+        for key, value in attributes.items():
+            element.setAttribute(key, value)
 
     if content:
         if isinstance(content, DocumentFragment):
@@ -174,8 +172,16 @@ def create(doc: Document, tag: str, attributes: dict, content=None) -> Document:
     return element
 
 
+def append_to(doc: Document, tag: str, attributes: dict = None, content=None) -> Document:
+    """Create an XML element and append it to the document."""
+    element = create(tag, attributes, content)
+    doc.appendChild(element)
+    return element
+
+
 class EPubGenerator:
     """Class to generate an EPUB file from a directory of markdown files."""
+
     def __init__(self, source_directory: str) -> None:
         self.source_directory = abspath(source_directory)
         settings_path = self.get_path("description.json")
@@ -208,18 +214,18 @@ class EPubGenerator:
 
         return images
 
-    def _create_package(self, doc: Document) -> Document:
+    def _create_package(self) -> Document:
         """Create the package element of the OPF file."""
-        return create(doc, "package", {
+        return create("package", {
             "xmlns": "http://www.idpf.org/2007/opf",
             "version": "3.0",
             "xml:lang": self.language,
             "unique-identifier": self.uuid
         })
 
-    def _create_metadata(self, doc: Document) -> Document:
+    def _create_metadata(self) -> Document:
         """Create the metadata element of the OPF file."""
-        metadata = create(doc, 'metadata',
+        metadata = create('metadata',
                           {'xmlns:dc': 'http://purl.org/dc/elements/1.1/'})
 
         metadata_settings = self.settings_data["metadata"]
@@ -235,14 +241,14 @@ class EPubGenerator:
                 continue
 
             if key in ids:
-                entry = create(doc, key, {'id': ids[key]}, value)
+                entry = create(key, {'id': ids[key]}, value)
             else:
-                entry = create(doc, key, {}, value)
+                entry = create(key, {}, value)
 
             metadata.appendChild(entry)
 
         # Ensure compatibility by providing a modified meta tag in the metadata
-        metadata.appendChild(create(doc, "meta", {
+        metadata.appendChild(create("meta", {
             "property": "dcterms:modified",
         }, datetime.now().strftime(r"%Y-%m-%dT%H:%M:%SZ")
         ))
@@ -250,48 +256,48 @@ class EPubGenerator:
         # Ensure compatibility by providing a cover meta tag in the metadata
         for index, image_name in enumerate(self.images):
             if image_name == self.settings_data["cover_image"]:
-                metadata.appendChild(create(doc, 'meta', {
+                metadata.appendChild(create('meta', {
                     'name': "cover",
                     'content': f"image-{index:05d}"
                 }))
 
         return metadata
 
-    def _create_manifest(self, doc: Document) -> Document:
+    def _create_manifest(self) -> Document:
         """Create the manifest element of the OPF file."""
-        manifest = doc.createElement('manifest')
+        manifest = create('manifest')
 
         # TOC.xhtml file for EPUB 3
-        manifest.appendChild(create(doc, 'item', {
+        append_to(manifest, 'item', {
             'id': "toc",
             'properties': "nav",
             'href': "TOC.xhtml",
             'media-type': "application/xhtml+xml"
-        }))
+        })
 
         # Ensure retrocompatibility by also providing a TOC.ncx file
-        manifest.appendChild(create(doc, 'item', {
+        append_to(manifest, 'item', {
             'id': "ncx",
             'href': "toc.ncx",
             'media-type': "application/x-dtbncx+xml"
-        }))
+        })
 
-        manifest.appendChild(create(doc, 'item', {
+        append_to(manifest, 'item', {
             'id': "titlepage",
             'href': "titlepage.xhtml",
             'media-type': "application/xhtml+xml"
-        }))
+        })
 
         for index, entry in enumerate(self.markdowns):
             base = splitext(basename(entry['markdown']))[0]
-            manifest.appendChild(create(doc, 'item', {
+            append_to(manifest, 'item', {
                 'id': f"s{index:05d}",
                 'href': f"s{index:05d}-{base}.xhtml",
                 'media-type': "application/xhtml+xml"
-            }))
+            })
 
         for index, image_name in enumerate(self.images):
-            image = create(doc, 'item', {
+            image = append_to(manifest, 'item', {
                 'id': f"image-{index:05d}",
                 'href': image_name,
                 'media-type': get_image_mimetype(image_name)
@@ -300,42 +306,40 @@ class EPubGenerator:
             if image_name == self.settings_data["cover_image"]:
                 image.setAttribute('properties', "cover-image")
 
-            manifest.appendChild(image)
-
         for index, style_name in enumerate(self.styles):
-            manifest.appendChild(create(doc, 'item', {
+            append_to(manifest, 'item', {
                 'id': f"css-{index:05d}",
                 'href': style_name,
                 'media-type': "text/css"
-            }))
+            })
 
         return manifest
 
-    def _create_spine(self, doc: Document) -> Document:
+    def _create_spine(self) -> Document:
         """Create the spine element of the OPF file."""
-        spine = create(doc, 'spine', {'toc': 'ncx'})
+        spine = create('spine', {'toc': 'ncx'})
 
-        spine.appendChild(create(doc, 'itemref', {
+        append_to(spine, 'itemref', {
             'idref': "titlepage",
             'linear': "yes"
-        }))
+        })
 
         for index, _ in enumerate(self.markdowns):
-            spine.appendChild(create(doc, 'itemref', {
+            append_to(spine, 'itemref', {
                 'idref': f"s{index:05d}",
                 'linear': "yes"
-            }))
+            })
 
         return spine
 
-    def _create_guide(self, doc: Document) -> Document:
+    def _create_guide(self) -> Document:
         """Create the guide element of the OPF file."""
-        guide = doc.createElement('guide')
-        guide.appendChild(create(doc, 'reference', {
+        guide = create('guide')
+        append_to(guide, 'reference', {
             'type': 'cover',
             'title': 'Cover image',
             'href': 'titlepage.xhtml'
-        }))
+        })
 
         return guide
 
@@ -343,12 +347,12 @@ class EPubGenerator:
         """Return the XML data for the package.opf file."""
         opf = Document()
 
-        package = self._create_package(opf)
+        package = self._create_package()
 
-        package.appendChild(self._create_metadata(opf))
-        package.appendChild(self._create_manifest(opf))
-        package.appendChild(self._create_spine(opf))
-        package.appendChild(self._create_guide(opf))
+        package.appendChild(self._create_metadata())
+        package.appendChild(self._create_manifest())
+        package.appendChild(self._create_spine())
+        package.appendChild(self._create_guide())
 
         opf.appendChild(package)
 
@@ -356,117 +360,153 @@ class EPubGenerator:
 
     def container_xml(self) -> bytes:
         """Return the XML data for the container.xml file."""
-        return (
-            '<?xml version="1.0" encoding="UTF-8" ?>\n'
-            '<container version="1.0"'
-            ' xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
-            '<rootfiles>'
-            '<rootfile full-path="OPS/package.opf"'
-            ' media-type="application/oebps-package+xml"/>'
-            '</rootfiles></container>'
-        ).encode('utf-8')
+        doc = Document()
+        container = create('container', {
+            'version': "1.0",
+            'xmlns': "urn:oasis:names:tc:opendocument:xmlns:container"
+        })
+
+        rootfiles = create('rootfiles', {})
+        rootfile = create('rootfile', {
+            'full-path': "OPS/package.opf",
+            'media-type': "application/oebps-package+xml"
+        })
+
+        rootfiles.appendChild(rootfile)
+        container.appendChild(rootfiles)
+        doc.appendChild(container)
+
+        return doc.toxml(encoding="utf-8")
 
     def coverpage_xml(self) -> bytes:
         """Return the XML data for the coverpage.xhtml file."""
         cover_image_path = self.settings_data["cover_image"]
 
-        styles = "".join([
-            f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
-            for style_name in self.styles
-        ])
+        doc = Document()
 
-        return (
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml"'
-            f' xml:lang="{self.language}" class="cover">'
-            '<head>'
-            '<title>'
-            f'{escape_xml(self.settings_data["metadata"]["dc:title"])}'
-            '</title>'
-            f'{styles}'
-            '</head>'
-            '<body class="cover">'
-            f'<img src="{cover_image_path}" class="cover" />'
-            '</body></html>'
-        ).encode('utf-8')
+        html = append_to(doc, 'html', {
+            'xmlns': "http://www.w3.org/1999/xhtml",
+            'xml:lang': self.language
+        })
+
+        head = append_to(html, 'head', {})
+
+        append_to(head, 'title',
+                  {},
+                  self.settings_data["metadata"]["dc:title"]
+                  )
+
+        for style_name in self.styles:
+            append_to(head, 'link', {
+                'rel': "stylesheet",
+                'href': style_name,
+                'type': "text/css"
+            })
+
+        body = append_to(html, 'body', {
+            "class": "cover"
+        })
+
+        append_to(body, 'img', {
+            "src": cover_image_path,
+            "class": "cover"
+        })
+
+        return doc.toxml(encoding="utf-8")
 
     def toc_xml(self) -> bytes:
         """Returns the XML data for the TOC.xhtml file."""
-        toc_xhtml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml"'
-            ' xmlns:epub="http://www.idpf.org/2007/ops"'
-            f' lang="{self.language}">'
-            '<head>'
-            '<meta http-equiv="default-style"'
-            ' content="text/html; charset=utf-8"/>'
-            '<title>Contents</title>'
-        )
+        doc = Document()
+
+        html = append_to(doc, 'html', {
+            'xmlns': "http://www.w3.org/1999/xhtml",
+            'xmlns:epub': "http://www.idpf.org/2007/ops",
+            'xml:lang': self.language
+        })
+
+        head = append_to(html, 'head')
+
+        append_to(head, 'meta', {
+            'http-equiv': "default-style",
+            'content': "text/html; charset=utf-8"
+        })
+
+        append_to(head, 'title', {}, "Contents")
 
         for style_name in self.settings_data["default_css"]:
-            toc_xhtml += (
-                f'<link rel="stylesheet" href="{style_name}" type="text/css"/>'
-            )
+            append_to(head, 'link', {
+                'rel': "stylesheet",
+                'href': style_name,
+                'type': "text/css"
+            })
 
-        toc_xhtml += (
-            '</head>'
-            '<body>'
-            '<nav epub:type="toc" role="doc-toc" id="toc">'
-            '<h2>Contents</h2>'
-            '<ol epub:type="list">'
-        )
+        body = append_to(html, 'body')
+        nav = append_to(body, 'nav', {
+            'epub:type': "toc",
+            'role': "doc-toc",
+            'id': "toc"
+        })
+
+        append_to(nav, 'h2', {}, "Contents")
+
+        nav_list = append_to(nav, 'ol', {
+            'epub:type': "list"
+        })
 
         for index, entry in enumerate(self.markdowns):
             base = splitext(basename(entry["markdown"]))[0]
-            title = escape_xml(self.chapter_title(entry["markdown"]))
-            toc_xhtml += (
-                '<li>'
-                f'<a href="s{index:05d}-{base}.xhtml">{title}</a>'
-                '</li>'
-            )
+            title = self.chapter_title(entry["markdown"])
+            nav_item = append_to(nav_list, 'li')
+            append_to(nav_item, 'a', {
+                'href': f"s{index:05d}-{base}.xhtml"
+            }, title)
 
-        toc_xhtml += '</ol>\n</nav>\n</body>\n</html>'
-
-        return toc_xhtml.encode('utf-8')
+        return doc.toxml(encoding="utf-8")
 
     def tocncx_xml(self) -> bytes:
         """Returns the XML data for the TOC.ncx file."""
-        identifier = escape_xml(
-            self.settings_data["metadata"]["dc:identifier"])
-        title = escape_xml(self.settings_data["metadata"]["dc:title"])
-        creator = escape_xml(self.settings_data["metadata"]["dc:creator"])
-        toc_ncx = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"'
-            f' xml:lang="{self.language}" version="2005-1">'
-            '<head>'
-            f'<meta name="dtb:uid" content="{identifier}"/>'
-            '<meta name="dtb:depth" content="1"/>'
-            '<meta name="dtb:totalPageCount" content="0"/>'
-            '<meta name="dtb:maxPageNumber" content="0"/>'
-            '</head>'
-            '<docTitle>'
-            f'<text>{title}</text>'
-            '</docTitle>'
-            '<docAuthor>'
-            f'<text>{creator}</text>'
-            '</docAuthor>'
-            '<navMap>'
-        )
+        identifier = self.settings_data["metadata"]["dc:identifier"]
+
+        title = self.settings_data["metadata"]["dc:title"]
+        creator = self.settings_data["metadata"]["dc:creator"]
+
+        doc = Document()
+
+        ncx = append_to(doc, 'ncx', {
+            'xmlns': "http://www.daisy.org/z3986/2005/ncx/",
+            'xml:lang': self.language,
+            'version': "2005-1"
+        })
+
+        head = append_to(ncx, 'head')
+
+        append_to(head, 'meta', {'name': "dtb:uid", 'content': identifier})
+        append_to(head, 'meta', {'name': "dtb:depth", 'content': "1"})
+        append_to(head, 'meta', {'name': "dtb:totalPageCount", 'content': "0"})
+        append_to(head, 'meta', {'name': "dtb:maxPageNumber", 'content': "0"})
+
+        doc_title = append_to(ncx, 'docTitle')
+        append_to(doc_title, 'text', {}, title)
+        doc_author = append_to(ncx, 'docAuthor')
+        append_to(doc_author, 'text', {}, creator)
+
+        nav_map = append_to(ncx, 'navMap')
 
         for index, entry in enumerate(self.markdowns):
             base = splitext(basename(entry["markdown"]))[0]
-            title = escape_xml(self.chapter_title(entry["markdown"]))
-            toc_ncx += (
-                f'<navPoint id="navpoint-{index}">'
-                f'<navLabel><text>{title}</text></navLabel>'
-                f'<content src="s{index:05d}-{base}.xhtml"/>'
-                ' </navPoint>'
-            )
+            title = self.chapter_title(entry["markdown"])
 
-        toc_ncx += '</navMap>\n</ncx>'
+            nav_point = append_to(nav_map, 'navPoint', {
+                'id': f"navpoint-{index}",
+            })
 
-        return toc_ncx.encode('utf-8')
+            nav_label = append_to(nav_point, 'navLabel')
+            append_to(nav_label, 'text', {}, title)
+            append_to(nav_point, 'content', {
+                'src': f"s{index:05d}-{base}.xhtml"
+            })
+
+        return doc.toxml(encoding="utf-8")
 
     def chapter_title(self, markdown_name: str) -> str:
         """Returns the title of a chapter from its markdown file."""
@@ -480,37 +520,51 @@ class EPubGenerator:
         Returns the XML data for a given markdown chapter file, with the
         corresponding css chapter files
         """
-        title = self.chapter_title(markdown_name)
-
         with open(self.get_path(markdown_name), "r", encoding="utf-8") as chap:
             markdown_data = chap.read()
 
-        html_text = markdown(markdown_data,
-                             extensions=["codehilite",
-                                         "tables", "fenced_code"],
-                             extension_configs={
-                                 "codehilite": {"guess_lang": False}}
-                             )
-
-        all_xhtml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml"'
-            ' xmlns:epub="http://www.idpf.org/2007/ops"'
-            f' lang="{self.language}">'
-            '<head>'
-            f'<title>{title}</title>'
-            '<meta http-equiv="default-style"'
-            ' content="text/html; charset=utf-8"/>'
+        html_text = markdown(
+            markdown_data,
+            extensions=["codehilite", "tables", "fenced_code"],
+            extension_configs={"codehilite": {"guess_lang": False}},
+            output_format="xhtml"
         )
 
+        xml_before = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml">'
+            '<body>'
+        )
+        xml_after = '</body></html>'
+        body_content = parseString(xml_before + html_text + xml_after)
+
+        doc = Document()
+
+        html = append_to(doc, 'html', {
+            'xmlns': "http://www.w3.org/1999/xhtml",
+            'xmlns:epub': "http://www.idpf.org/2007/ops",
+            'xml:lang': self.language
+        })
+
+        head = append_to(html, 'head')
+        append_to(head, 'title', {}, self.chapter_title(markdown_name))
+        append_to(head, 'meta', {
+            'http-equiv': "default-style",
+            'content': "text/html; charset=utf-8"
+        })
+
         for style in styles:
-            all_xhtml += (
-                f'<link rel="stylesheet" href="{style}" type="text/css"/>'
-            )
+            append_to(head, 'link', {
+                'rel': "stylesheet",
+                'href': style,
+                'type': "text/css"
+            })
 
-        all_xhtml += f'</head><body>{html_text}</body></html>'
+        body = append_to(html, 'body')
+        for element in body_content.getElementsByTagName("body")[0].childNodes:
+            body.appendChild(element)
 
-        return all_xhtml.encode('utf-8')
+        return doc.toxml(encoding="utf-8")
 
     def process_image(self, image_name: str, options: dict) -> bytes:
         """Process an image file and return its binary data."""
@@ -563,7 +617,6 @@ class EPubGenerator:
 
         image.save(output, img_format, optimize=True)
         return output.getvalue()
-
 
     def epub_put(self, epub: ZipFile, filename: str, data: str) -> None:
         """Write a file to the EPUB archive."""
