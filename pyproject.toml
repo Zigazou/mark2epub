@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mark2epub"
+version = "1.0.0"
+
+[tool.pytest.ini_options]
+pythonpath = "src"
