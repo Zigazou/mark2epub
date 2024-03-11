@@ -304,7 +304,7 @@ class EPubGenerator:
             image = append_to(manifest, 'item', {
                 'id': f"image-{index:05d}",
                 'href': image_name,
-                'media-type': get_image_mimetype(image_name)
+                'media-type': get_image_mimetype(self.get_path(image_name))
             })
 
             if image_name == self.settings_data["cover_image"]:
