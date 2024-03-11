@@ -710,10 +710,12 @@ def create_template(template_directory: str) -> None:
     mkdir(styles_directory)
 
     with open(join(styles_directory, "general.css"), "wb") as general_css:
-        general_css.write(DEFAULT_STYLES)
+        general_css.write(DEFAULT_STYLES.encode("utf-8"))
 
     with open(join(styles_directory, "specific.css"), "wb") as specific_css:
-        specific_css.write("/* Specific CSS for a chapter */\n\n")
+        specific_css.write(
+            "/* Specific CSS for a chapter */\n\n".encode("utf-8")
+        )
 
     # Create the description.json file.
     description = {
@@ -748,15 +750,21 @@ def create_template(template_directory: str) -> None:
 
     description_name = join(template_directory, "description.json")
     with open(description_name, "wb") as description_file:
-        description_file.write(dumps(description, indent=4))
+        description_file.write(
+            dumps(description, indent=4).encode("utf-8")
+        )
 
     # Create the chapter1.md file.
     with open(join(template_directory, "chapter1.md"), "wb") as chap1:
-        chap1.write('# Chapter 1\n\nThis is the first chapter.')
+        chap1.write(
+            '# Chapter 1\n\nThis is the first chapter.'.encode("utf-8")
+        )
 
     # Create the chapter2.md file.
     with open(join(template_directory, "chapter2.md"), "wb") as chap2:
-        chap2.write('# Chapter 2\n\nThis is the second chapter.')
+        chap2.write(
+            '# Chapter 2\n\nThis is the second chapter.'.encode("utf-8")
+        )
 
 
 def print_usage():
