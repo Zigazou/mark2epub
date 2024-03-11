@@ -29,7 +29,8 @@ from os import listdir, unlink, mkdir
 from os.path import basename, splitext, abspath, join
 from sys import argv, exit as sys_exit
 import sys
-from xml.dom.minidom import Document, Node, Element, DocumentFragment, parseString
+from xml.dom.minidom import Document, Node, Element, parseString
+from xml.parsers.expat import ExpatError
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 from json import load, dumps
 from re import sub
@@ -139,6 +140,7 @@ ERROR_ARGUMENT_COUNT = 4
 ERROR_ZOPFLI_UNAVAILABLE = 5
 ERROR_ZOPFLI = 6
 ERROR_DIRECTORY_EXISTS = 7
+ERROR_INVALID_MARKDOWN = 8
 
 
 def fatal_error(message: str, exit_code: int) -> None:
@@ -173,7 +175,7 @@ def create(tag: str, attributes: dict = None, content=None) -> Element:
             element.setAttribute(key, value)
 
     if content:
-        if isinstance(content, DocumentFragment):
+        if isinstance(content, Element):
             element.appendChild(content)
         else:
             element.appendChild(doc.createTextNode(content))
@@ -545,7 +547,13 @@ class EPubGenerator:
             '<body>'
         )
         xml_after = '</body></html>'
-        body_content = parseString(xml_before + html_text + xml_after)
+        try:
+            body_content = parseString(xml_before + html_text + xml_after)
+        except ExpatError:
+            fatal_error(
+                f'Invalid markdown file {markdown_name}',
+                ERROR_INVALID_MARKDOWN
+            )
 
         doc = Document()
 
