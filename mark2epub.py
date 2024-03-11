@@ -27,8 +27,9 @@ Examples:
 
 from os import listdir, unlink, mkdir
 from os.path import basename, splitext, abspath, join
-from sys import argv, stderr, exit as sys_exit
-from xml.dom.minidom import Document, DocumentFragment, parseString
+from sys import argv, exit as sys_exit
+import sys
+from xml.dom.minidom import Document, Node, Element, DocumentFragment, parseString
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 from json import load, dumps
 from re import sub
@@ -130,31 +131,39 @@ blockquote {
 }
 """
 
+# Return codes
+ERROR_NO_COMMAND = 1
+ERROR_UNKNOWN_COMMAND = 2
+ERROR_UNKNOWN_OPTION = 3
+ERROR_ARGUMENT_COUNT = 4
+ERROR_ZOPFLI_UNAVAILABLE = 5
+ERROR_ZOPFLI = 6
+ERROR_DIRECTORY_EXISTS = 7
+
 
 def fatal_error(message: str, exit_code: int) -> None:
     """Print an error message on stderr and exit the program."""
-    print(f"ERROR: {message}", file=stderr)
+    print(f"ERROR: {message}", file=sys.stderr)
     sys_exit(exit_code)
 
 
 def get_image_mimetype(image_name: str) -> str:
     """Return the mimetype of an image based on its name."""
-    if "gif" in image_name:
+    _, extension = splitext(image_name)
+
+    if extension == ".gif":
         return "image/gif"
 
-    if "jpg" in image_name:
+    if extension in (".jpg", ".jpeg"):
         return "image/jpeg"
 
-    if "jpeg" in image_name:
-        return "image/jpg"
-
-    if "png" in image_name:
+    if extension == ".png":
         return "image/png"
 
     return "application/octet-stream"
 
 
-def create(tag: str, attributes: dict = None, content=None) -> Document:
+def create(tag: str, attributes: dict = None, content=None) -> Element:
     """Create an XML element with the given tag, attributes and content."""
     doc = Document()
     element = doc.createElement(tag)
@@ -172,7 +181,7 @@ def create(tag: str, attributes: dict = None, content=None) -> Document:
     return element
 
 
-def append_to(doc: Document, tag: str, attributes: dict = None, content=None) -> Document:
+def append_to(doc: Node, tag: str, attributes: dict = None, content=None) -> Document:
     """Create an XML element and append it to the document."""
     element = create(tag, attributes, content)
     doc.appendChild(element)
@@ -607,7 +616,10 @@ class EPubGenerator:
                 )
 
                 if result.returncode != 0:
-                    fatal_error(f"Could not use zopflipng on {image_name}", 6)
+                    fatal_error(
+                        f"Could not use zopflipng on {image_name}",
+                        ERROR_ZOPFLI
+                    )
 
             with open(png_temp.name + ".zopfli", "rb") as output_file:
                 output = output_file.read()
@@ -679,7 +691,10 @@ def create_template(template_directory: str) -> None:
     try:
         mkdir(template_directory)
     except FileExistsError:
-        fatal_error(f"{template_directory} already exists", 7)
+        fatal_error(
+            f"{template_directory} already exists",
+            ERROR_DIRECTORY_EXISTS
+        )
 
     # Fill images directory.
     images_directory = join(template_directory, "images")
@@ -811,16 +826,19 @@ def check_command_line(command_line: dict) -> None:
     """Check if the command line is valid."""
     if command_line['command'] is None:
         print_usage()
-        fatal_error("No command provided", 1)
+        fatal_error("No command provided", ERROR_NO_COMMAND)
 
     command = command_line['command']
     if command not in OPTIONS:
-        fatal_error(f"Unknown command '{command}'", 2)
+        fatal_error(f"Unknown command '{command}'", ERROR_UNKNOWN_COMMAND)
 
     options = command_line['options']
     for option in options:
         if option not in OPTIONS[command]['settings']:
-            fatal_error(f"Unknown option {option} for command {command}", 3)
+            fatal_error(
+                f"Unknown option {option} for command {command}",
+                ERROR_UNKNOWN_OPTION
+            )
 
     min_args = OPTIONS[command]['min_args']
     max_args = OPTIONS[command]['max_args']
@@ -831,14 +849,14 @@ def check_command_line(command_line: dict) -> None:
                 f"Invalid arguments count, got {arg_count}"
                 f" but expected {min_args}"
                 f" for command {command}",
-                4
+                ERROR_ARGUMENT_COUNT
             )
         else:
             fatal_error(
                 f"Invalid arguments count, got {arg_count}"
                 f" but expected between {min_args} and {max_args})"
                 f" for command {command}",
-                4
+                ERROR_ARGUMENT_COUNT
             )
 
 
@@ -856,10 +874,16 @@ def main(arguments: list[str]):
         # anything
         use_zopfli = options['zopfli']
         if use_zopfli and which("advzip") is None:
-            fatal_error("advzip is required for Zopfli compression", 5)
+            fatal_error(
+                "advzip is required for Zopfli compression",
+                ERROR_ZOPFLI_UNAVAILABLE
+            )
 
         if use_zopfli and which("zopflipng") is None:
-            fatal_error("zopflipng is required for Zopfli compression", 5)
+            fatal_error(
+                "zopflipng is required for Zopfli compression",
+                ERROR_ZOPFLI_UNAVAILABLE
+            )
 
         epub_generator = EPubGenerator(source_directory)
         epub_generator.create_epub(output_epub, options)
