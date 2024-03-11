@@ -1,12 +1,12 @@
 from unittest import TestCase, main
 from mock import patch
-from os import devnull
+from os import devnull, getcwd
+from os.path import join
 from parameterized import parameterized
 from mark2epub import (
     get_image_mimetype, create, append_to, parse_command_line,
     check_command_line, ERROR_NO_COMMAND, ERROR_UNKNOWN_COMMAND,
-    ERROR_UNKNOWN_OPTION, ERROR_ARGUMENT_COUNT, ERROR_ZOPFLI_UNAVAILABLE,
-    ERROR_ZOPFLI, ERROR_DIRECTORY_EXISTS
+    ERROR_UNKNOWN_OPTION, ERROR_ARGUMENT_COUNT
 )
 
 VOID = open(devnull, 'w')
@@ -14,16 +14,19 @@ VOID = open(devnull, 'w')
 
 class TestMark2Epub(TestCase):
     @parameterized.expand([
-        ["png", "example/toto.png", "image/png"],
-        ["jpg", "example/toto.jpg", "image/jpeg"],
-        ["jpeg", "example/toto.jpeg", "image/jpeg"],
-        ["empty", "", "application/octet-stream"],
-        ["gif", "example/toto.gif", "image/gif"],
-        ["gifjpeg", "example/toto.gif.jpeg", "image/jpeg"],
-        ["noextension", "example.example/toto", "application/octet-stream"],
+        ["png", "png.png", "image/png"],
+        ["jpg", "jpeg.jpg", "image/jpeg"],
+        ["jpeg", "jpeg.jpeg", "image/jpeg"],
+        ["gif", "gif.gif", "image/gif"],
+        ["notjpeg1", "gif.jpeg", "image/gif"],
+        ["notjpeg2", "png.jpeg", "image/png"],
+        ["nofile", "missing.jpeg", ""],
     ])
     def test_get_image_mimetype(self, _name, filepath, expected):
-        self.assertEqual(get_image_mimetype(filepath), expected)
+        self.assertEqual(
+            get_image_mimetype(join(getcwd(), "tests", "images", filepath)),
+            expected
+        )
 
     @parameterized.expand([
         ["onlytag", "body", None, None, "<body/>"],

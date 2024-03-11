@@ -26,7 +26,7 @@ Examples:
 """
 
 from os import listdir, unlink, mkdir
-from os.path import basename, splitext, abspath, join
+from os.path import basename, splitext, abspath, join, isfile
 from sys import argv, exit as sys_exit
 import sys
 from xml.dom.minidom import Document, Node, Element, parseString
@@ -42,6 +42,7 @@ from subprocess import run, PIPE
 from tempfile import NamedTemporaryFile
 from PIL import Image, ImageDraw
 from markdown import markdown
+from magic import Magic
 
 OPTIONS = {
     "convert": {
@@ -151,18 +152,10 @@ def fatal_error(message: str, exit_code: int) -> None:
 
 def get_image_mimetype(image_name: str) -> str:
     """Return the mimetype of an image based on its name."""
-    _, extension = splitext(image_name)
+    if not isfile(image_name):
+        return ''
 
-    if extension == ".gif":
-        return "image/gif"
-
-    if extension in (".jpg", ".jpeg"):
-        return "image/jpeg"
-
-    if extension == ".png":
-        return "image/png"
-
-    return "application/octet-stream"
+    return Magic(mime=True).from_file(image_name)
 
 
 def create(tag: str, attributes: dict = None, content=None) -> Element:
