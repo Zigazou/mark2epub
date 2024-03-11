@@ -1,5 +1,7 @@
 # mark2epub
 
+![Workflow state](https://github.com/Zigazou/mark2epub/actions/workflows/python-package.yml/badge.svg)
+
 mark2epub is a simple Python script for converting Markdown files, images, and
 css files to a single ePub book.
 
